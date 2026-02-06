@@ -13,6 +13,12 @@ body {
 
 #kanban-container {
     overflow-x: auto;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+}
+
+#kanban-container::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
 }
 
 /* Column tab slider (compact, at top) */
