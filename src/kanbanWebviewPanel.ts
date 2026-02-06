@@ -26,13 +26,19 @@ export class KanbanWebviewPanel {
             return;
         }
 
+        // Include workspace folders in localResourceRoots so images can load
+        const resourceRoots: vscode.Uri[] = [extensionUri];
+        if (vscode.workspace.workspaceFolders) {
+            resourceRoots.push(...vscode.workspace.workspaceFolders.map(f => f.uri));
+        }
+
         const panel = vscode.window.createWebviewPanel(
             KanbanWebviewPanel.viewType,
             'Markdown Kanban',
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,
-                localResourceRoots: [extensionUri],
+                localResourceRoots: resourceRoots,
                 retainContextWhenHidden: true
             }
         );
@@ -45,9 +51,13 @@ export class KanbanWebviewPanel {
     }
 
     public static revive(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, context: vscode.ExtensionContext) {
+        const resourceRoots: vscode.Uri[] = [extensionUri];
+        if (vscode.workspace.workspaceFolders) {
+            resourceRoots.push(...vscode.workspace.workspaceFolders.map(f => f.uri));
+        }
         panel.webview.options = {
             enableScripts: true,
-            localResourceRoots: [extensionUri],
+            localResourceRoots: resourceRoots,
         };
         KanbanWebviewPanel.currentPanel = new KanbanWebviewPanel(panel, extensionUri, context);
     }
@@ -117,6 +127,18 @@ export class KanbanWebviewPanel {
             case 'toggleColumnArchive':
                 this.toggleColumnArchive(message.columnId, message.archived);
                 break;
+            case 'pasteImage':
+                this.handlePasteImage(message.imageData, message.extension || 'png');
+                break;
+            case 'openFile':
+                if (this._document && message.path) {
+                    const docDir = path.dirname(this._document.uri.fsPath);
+                    const filePath = path.resolve(docDir, message.path);
+                    if (fs.existsSync(filePath)) {
+                        vscode.commands.executeCommand('vscode.open', vscode.Uri.file(filePath));
+                    }
+                }
+                break;
         }
     }
 
@@ -136,13 +158,24 @@ export class KanbanWebviewPanel {
         if (!this._panel.webview) return;
 
         this._panel.webview.html = this._getHtmlForWebview();
-        
+
         const board = this._board || { title: 'Please open a Markdown Kanban file', columns: [] };
+
+        // Resolve workspace URI for image rendering in descriptions
+        let workspaceUri = '';
+        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            workspaceUri = this._panel.webview.asWebviewUri(
+                vscode.workspace.workspaceFolders[0].uri
+            ).toString();
+        }
+
         this._panel.webview.postMessage({
             type: 'updateBoard',
-            board: board
+            board: board,
+            workspaceUri: workspaceUri
         });
     }
+
 
     private async saveToMarkdown() {
         if (!this._document || !this._board) return;
@@ -327,9 +360,83 @@ export class KanbanWebviewPanel {
             vscode.Uri.file(path.join(this._context.extensionPath, 'src', 'html'))
         );
 
-        html = html.replace(/<head>/, `<head><base href="${baseWebviewUri.toString()}/">`);
+        // CSP: allow images from webview resources, inline styles/scripts for existing handlers
+        const cspSource = this._panel.webview.cspSource;
+        const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'unsafe-inline'; font-src ${cspSource};">`;
+
+        html = html.replace(/<head>/, `<head>${csp}<base href="${baseWebviewUri.toString()}/">`);
 
         return html;
+    }
+
+    private getNextImageFilename(dir: string, ext: string): string {
+        if (!fs.existsSync(dir)) { return `image.${ext}`; }
+
+        const files = fs.readdirSync(dir);
+        const pattern = new RegExp(`^image(?:-(\\d+))?\\.${ext}$`);
+        let maxN = -1;
+
+        for (const file of files) {
+            const match = file.match(pattern);
+            if (match) {
+                const n = match[1] ? parseInt(match[1]) : 0;
+                if (n > maxN) { maxN = n; }
+            }
+        }
+
+        if (maxN === -1) { return `image.${ext}`; }
+        return `image-${maxN + 1}.${ext}`;
+    }
+
+    private async handlePasteImage(base64Data: string, ext: string) {
+        if (!this._document) return;
+
+        const docUri = this._document.uri;
+        const docDir = path.dirname(docUri.fsPath);
+        const docBasename = path.basename(docUri.fsPath);
+
+        // Check markdown.copyFiles.destination setting
+        const config = vscode.workspace.getConfiguration('markdown');
+        const destinations = config.get<Record<string, string>>('copyFiles.destination');
+
+        // Determine target directory from setting
+        let targetDir = docDir;
+        let relativeDir = '';
+
+        if (destinations) {
+            let destPattern: string | undefined;
+            if (destinations[docBasename]) {
+                destPattern = destinations[docBasename];
+            } else if (destinations['**/*.md']) {
+                destPattern = destinations['**/*.md'];
+            }
+            if (destPattern) {
+                // Extract directory from pattern (e.g., "ss/tasks/${fileName}" -> "ss/tasks")
+                const dirPart = destPattern.replace('${fileName}', '').replace(/\/$/, '');
+                targetDir = path.resolve(docDir, dirPart);
+                relativeDir = dirPart;
+            }
+        }
+
+        // Ensure directory exists
+        if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
+        }
+
+        // Generate filename matching VSCode's default: image.png, image-1.png, image-2.png, ...
+        const fileName = this.getNextImageFilename(targetDir, ext);
+        const savePath = path.join(targetDir, fileName);
+        const relativeMdPath = relativeDir ? `${relativeDir}/${fileName}` : fileName;
+
+        // Save the file
+        const buffer = Buffer.from(base64Data, 'base64');
+        fs.writeFileSync(savePath, buffer);
+
+        // Send back the markdown image syntax
+        this._panel.webview.postMessage({
+            type: 'imageInserted',
+            markdownText: `![alt text](${relativeMdPath.replace(/\\/g, '/')})`
+        });
     }
 
     public dispose() {

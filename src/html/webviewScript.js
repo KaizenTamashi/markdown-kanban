@@ -1,5 +1,6 @@
 const vscode = acquireVsCodeApi()
 let currentBoard = null
+let currentWorkspaceUri = ''
 let expandedTasks = new Set()
 let currentEditingTask = null
 let currentEditingColumn = null
@@ -13,10 +14,16 @@ window.addEventListener('message', event => {
   switch (message.type) {
     case 'updateBoard':
       currentBoard = message.board
+      if (message.workspaceUri) {
+        currentWorkspaceUri = message.workspaceUri
+      }
       renderBoard()
       break
     case 'toggleTaskExpansion':
       toggleTaskExpansion(message.taskId)
+      break
+    case 'imageInserted':
+      insertImageIntoDescription(message.markdownText)
       break
   }
 })
@@ -62,6 +69,60 @@ function getStepsProgress (steps) {
 }
 
 // Render Kanban board based on filter conditions and sorting settings
+// Column tab slider — compact navigation
+let activeTabIndex = 0
+
+function renderColumnTabs(columns) {
+  const tabsContainer = document.getElementById('column-tabs')
+  const slider = document.getElementById('column-tab-slider')
+  if (!tabsContainer || !slider) return
+
+  // Remove old tabs (keep slider)
+  tabsContainer.querySelectorAll('.column-tab').forEach(t => t.remove())
+
+  columns.forEach((col, i) => {
+    const tab = document.createElement('span')
+    tab.className = 'column-tab' + (i === activeTabIndex ? ' active' : '')
+    const taskCount = col.tasks ? col.tasks.length : 0
+    tab.innerHTML = `${col.title}<span class="column-tab-count">${taskCount}</span>`
+    tab.addEventListener('click', () => {
+      activeTabIndex = i
+      // Scroll column into view
+      const colElements = document.querySelectorAll('.kanban-column')
+      if (colElements[i]) {
+        colElements[i].scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+      }
+      // Update active state
+      tabsContainer.querySelectorAll('.column-tab').forEach(t => t.classList.remove('active'))
+      tab.classList.add('active')
+      updateTabSlider()
+    })
+    tabsContainer.insertBefore(tab, slider)
+  })
+
+  // Position slider on active tab
+  requestAnimationFrame(() => updateTabSlider())
+}
+
+function updateTabSlider() {
+  const tabsContainer = document.getElementById('column-tabs')
+  const slider = document.getElementById('column-tab-slider')
+  if (!tabsContainer || !slider) return
+
+  const tabs = tabsContainer.querySelectorAll('.column-tab')
+  const activeTab = tabs[activeTabIndex]
+  if (!activeTab) {
+    slider.style.display = 'none'
+    return
+  }
+
+  slider.style.display = 'block'
+  const containerRect = tabsContainer.getBoundingClientRect()
+  const tabRect = activeTab.getBoundingClientRect()
+  slider.style.width = `${tabRect.width}px`
+  slider.style.transform = `translateX(${tabRect.left - containerRect.left - 2}px)`
+}
+
 function renderBoard () {
   if (!currentBoard) return
 
@@ -97,6 +158,7 @@ function renderBoard () {
 
   setupDragAndDrop()
   setupTaskExpansionEvents()
+  renderColumnTabs(normalColumns)
 }
 
 function createControlsContainer() {
@@ -244,9 +306,50 @@ function createDeadlineElement(deadlineInfo, dueDate) {
   return `<div class="task-deadline deadline-${deadlineInfo.status}" title="Due date: ${dueDate}">${deadlineInfo.text}</div>`
 }
 
+// Render markdown images as hover-preview links (like VS Code's native markdown preview)
+function renderDescriptionHtml(text) {
+  let safe = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+
+  // Convert ![alt](path) to underlined hover-trigger links
+  safe = safe.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+    let resolvedSrc = src
+    if (currentWorkspaceUri && !src.startsWith('http') && !src.startsWith('vscode-')) {
+      resolvedSrc = `${currentWorkspaceUri}/${src.replace(/^\//, '')}`
+    }
+    const displayText = alt || src.split('/').pop()
+    const escapedPath = src.replace(/'/g, "\\'")
+    return `<span class="image-hover-trigger" data-src="${resolvedSrc}" data-path="${escapedPath}" onclick="event.stopPropagation(); vscode.postMessage({type: 'openFile', path: '${escapedPath}'})">${displayText}</span>`
+  })
+
+  safe = safe.replace(/\n/g, '<br>')
+  return safe
+}
+
+// Insert image markdown text at cursor position in description textarea
+function insertImageIntoDescription(markdownText) {
+  const textarea = document.getElementById('task-description')
+  if (!textarea) return
+
+  const start = textarea.selectionStart
+  const end = textarea.selectionEnd
+  const value = textarea.value
+
+  // Add newline before if not at start and previous char isn't a newline
+  const prefix = (start > 0 && value[start - 1] !== '\n') ? '\n' : ''
+  // Add newline after
+  const suffix = '\n'
+
+  textarea.value = value.substring(0, start) + prefix + markdownText + suffix + value.substring(end)
+  textarea.selectionStart = textarea.selectionEnd = start + prefix.length + markdownText.length + suffix.length
+}
+
 function createTaskDetails(task, columnId) {
-  const description = task.description 
-    ? `<div class="task-description">${task.description}</div>`
+  const description = task.description
+    ? `<div class="task-description">${renderDescriptionHtml(task.description)}</div>`
     : ''
   
   const steps = task.steps && task.steps.length > 0
@@ -826,12 +929,14 @@ function populateTaskForm(columnId, taskId) {
 
   clearAndPopulateTags(task.tags)
   clearAndPopulateSteps(task.steps)
+
 }
 
 function clearTaskForm(form) {
   form.reset()
   clearAndPopulateTags([])
   clearAndPopulateSteps([])
+
 }
 
 function clearAndPopulateTags(tags) {
@@ -1474,10 +1579,102 @@ function setupStepsInput () {
   })
 }
 
+// Setup description textarea: image paste handling
+function setupDescriptionHandlers() {
+  const textarea = document.getElementById('task-description')
+  if (!textarea) return
+
+  // Image paste handling — intercept clipboard images, save via extension backend
+  textarea.addEventListener('paste', e => {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const blob = item.getAsFile()
+        if (!blob) continue
+
+        const reader = new FileReader()
+        reader.onload = () => {
+          const base64 = reader.result.toString().split(',')[1]
+          const ext = item.type === 'image/jpeg' ? 'jpg' : (item.type.split('/')[1] || 'png')
+          vscode.postMessage({
+            type: 'pasteImage',
+            imageData: base64,
+            mimeType: item.type,
+            extension: ext
+          })
+        }
+        reader.readAsDataURL(blob)
+        break
+      }
+    }
+  })
+}
+
+// =============================================
+// Image Hover Preview Tooltip (VS Code-style)
+// =============================================
+let imageTooltip = null
+
+function setupImageHoverPreview() {
+  imageTooltip = document.createElement('div')
+  imageTooltip.className = 'image-hover-tooltip'
+  imageTooltip.style.display = 'none'
+  document.body.appendChild(imageTooltip)
+
+  // Show tooltip on hover over image trigger links
+  document.addEventListener('mouseover', e => {
+    const trigger = e.target.closest('.image-hover-trigger')
+    if (trigger) {
+      const src = trigger.dataset.src
+      imageTooltip.innerHTML = `<img src="${src}" alt="Preview" />`
+      imageTooltip.style.display = 'block'
+      positionTooltip(trigger)
+    }
+  })
+
+  // Hide tooltip when leaving trigger (but not when moving to tooltip itself)
+  document.addEventListener('mouseout', e => {
+    const trigger = e.target.closest('.image-hover-trigger')
+    if (trigger && !trigger.contains(e.relatedTarget) && e.relatedTarget !== imageTooltip && !imageTooltip.contains(e.relatedTarget)) {
+      imageTooltip.style.display = 'none'
+    }
+  })
+
+  // Hide tooltip when leaving the tooltip itself
+  imageTooltip.addEventListener('mouseleave', () => {
+    imageTooltip.style.display = 'none'
+  })
+}
+
+function positionTooltip(trigger) {
+  const rect = trigger.getBoundingClientRect()
+  const tooltipWidth = 400
+  const tooltipMaxHeight = 300
+
+  let left = rect.left
+  let top = rect.bottom + 8
+
+  // Keep within viewport
+  if (left + tooltipWidth > window.innerWidth) {
+    left = window.innerWidth - tooltipWidth - 16
+  }
+  if (top + tooltipMaxHeight > window.innerHeight) {
+    top = rect.top - tooltipMaxHeight - 8
+  }
+
+  imageTooltip.style.left = `${Math.max(8, left)}px`
+  imageTooltip.style.top = `${top}px`
+}
+
 // Filter and sort event listeners
 document.addEventListener('DOMContentLoaded', () => {
   setupTagsInput()
   setupStepsInput()
+  setupDescriptionHandlers()
+  setupImageHoverPreview()
 
   // Tag filtering
   document.getElementById('tag-filter').addEventListener('input', e => {

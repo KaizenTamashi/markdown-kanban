@@ -147,11 +147,28 @@ export class MarkdownKanbanParser {
           continue;
         }
         
-        // 检查是否开始描述部分
+        // Legacy: support ```md code blocks for backward compatibility
         if (line.match(/^\s+```md/)) {
           inTaskProperties = false;
           inTaskDescription = true;
           inCodeBlock = true;
+          continue;
+        }
+
+        // Recognize image markdown syntax as inline description (no wrapper needed)
+        const imageMatch = trimmedLine.match(/^!\[.*\]\(.*\)/);
+        if (imageMatch) {
+          currentTask.description = currentTask.description
+            ? currentTask.description + '\n' + trimmedLine
+            : trimmedLine;
+          continue;
+        }
+
+        // Continuation lines for desc: (indented lines that aren't properties/steps)
+        if (currentTask.description !== undefined && line.match(/^\s{4,}/) && trimmedLine !== '') {
+          currentTask.description = currentTask.description
+            ? currentTask.description + '\n' + trimmedLine
+            : trimmedLine;
           continue;
         }
       }
@@ -193,7 +210,7 @@ export class MarkdownKanbanParser {
   }
 
   private static parseTaskProperty(line: string, task: KanbanTask): boolean {
-    const propertyMatch = line.match(/^\s+- (due|tags|priority|workload|steps|defaultExpanded):\s*(.*)$/);
+    const propertyMatch = line.match(/^\s+- (due|tags|priority|workload|steps|defaultExpanded|desc):\s*(.*)$/);
     if (!propertyMatch) return false;
 
     const [, propertyName, propertyValue] = propertyMatch;
@@ -224,6 +241,14 @@ export class MarkdownKanbanParser {
         break;
       case 'steps':
         task.steps = [];
+        break;
+      case 'desc':
+        // Inline text after `- desc:` starts the description
+        if (value) {
+          task.description = task.description
+            ? task.description + '\n' + value
+            : value;
+        }
         break;
     }
     return true;
@@ -278,12 +303,15 @@ export class MarkdownKanbanParser {
 
         // 添加描述
         if (task.description && task.description.trim() !== '') {
-          markdown += `    \`\`\`md\n`;
           const descriptionLines = task.description.trim().split('\n');
-          for (const descLine of descriptionLines) {
-            markdown += `    ${descLine}\n`;
+          if (descriptionLines.length === 1) {
+            markdown += `  - desc: ${descriptionLines[0]}\n`;
+          } else {
+            markdown += `  - desc:\n`;
+            for (const descLine of descriptionLines) {
+              markdown += `    ${descLine}\n`;
+            }
           }
-          markdown += `    \`\`\`\n`;
         }
 
         markdown += '\n';

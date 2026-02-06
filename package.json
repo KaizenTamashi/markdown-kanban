@@ -21,7 +21,7 @@
     "看板",
     "任务管理"
   ],
-  "icon": "./imgs/logo.png",
+  "icon": "imgs/logo.png",
   "activationEvents": [
     "onLanguage:markdown"
   ],
