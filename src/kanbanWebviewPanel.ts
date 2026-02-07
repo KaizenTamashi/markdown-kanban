@@ -14,6 +14,8 @@ export class KanbanWebviewPanel {
     private _disposables: vscode.Disposable[] = [];
     private _board?: KanbanBoard;
     private _document?: vscode.TextDocument;
+    private _htmlInitialized = false;
+    private _lastSelfSaveTime = 0;
 
     public static createOrShow(extensionUri: vscode.Uri, context: vscode.ExtensionContext, document?: vscode.TextDocument) {
         const column = vscode.window.activeTextEditor?.viewColumn;
@@ -133,6 +135,9 @@ export class KanbanWebviewPanel {
             case 'pasteImage':
                 this.handlePasteImage(message.imageData, message.extension || 'png');
                 break;
+            case 'requestBoard':
+                this._sendBoardData();
+                break;
             case 'openFile':
                 if (this._document && message.path) {
                     const docDir = path.dirname(this._document.uri.fsPath);
@@ -146,13 +151,22 @@ export class KanbanWebviewPanel {
     }
 
     public loadMarkdownFile(document: vscode.TextDocument) {
+        // Skip re-parsing when the file change originated from our own save (within 1.5s).
+        // Re-parsing generates new random task IDs which breaks the detail modal.
+        // IMPORTANT: Don't reassign this._document here — it would point to the wrong file
+        // if a different markdown editor triggers this during the guard window.
+        if (Date.now() - this._lastSelfSaveTime < 1500) {
+            return;
+        }
+
         this._document = document;
+
         try {
             this._board = MarkdownKanbanParser.parseMarkdown(document.getText());
         } catch (error) {
             console.error('Error parsing Markdown:', error);
             vscode.window.showErrorMessage(`Kanban parsing error: ${error instanceof Error ? error.message : String(error)}`);
-            this._board = { title: 'Error Loading Board', columns: [] };
+            this._board = { title: 'Error Loading Board', columns: [], nextId: 1 };
         }
         this._update();
     }
@@ -160,8 +174,17 @@ export class KanbanWebviewPanel {
     private _update() {
         if (!this._panel.webview) return;
 
-        this._panel.webview.html = this._getHtmlForWebview();
+        // Only set HTML once — subsequent updates just send data via postMessage.
+        // Replacing HTML on every change destroys modal state and causes race conditions.
+        if (!this._htmlInitialized) {
+            this._panel.webview.html = this._getHtmlForWebview();
+            this._htmlInitialized = true;
+        }
 
+        this._sendBoardData();
+    }
+
+    private _sendBoardData() {
         const board = this._board || { title: 'Please open a Markdown Kanban file', columns: [] };
 
         // Resolve workspace URI for image rendering in descriptions
@@ -218,8 +241,9 @@ export class KanbanWebviewPanel {
 
     private async performAction(action: () => void) {
         if (!this._board) return;
-        
+
         action();
+        this._lastSelfSaveTime = Date.now();
         await this.saveToMarkdown();
         this._update();
     }
@@ -239,13 +263,20 @@ export class KanbanWebviewPanel {
         });
     }
 
+    private _getNextTaskId(): string {
+        if (!this._board) return `TSK-1`;
+        const id = `TSK-${this._board.nextId}`;
+        this._board.nextId++;
+        return id;
+    }
+
     private addTask(columnId: string, taskData: any) {
         this.performAction(() => {
             const column = this.findColumn(columnId);
             if (!column) return;
 
             const newTask: KanbanTask = {
-                id: Math.random().toString(36).substr(2, 9),
+                id: this._getNextTaskId(),
                 title: taskData.title,
                 description: taskData.description,
                 tags: taskData.tags || [],

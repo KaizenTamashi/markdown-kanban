@@ -24,6 +24,7 @@ export interface KanbanColumn {
 export interface KanbanBoard {
   title: string;
   columns: KanbanColumn[];
+  nextId: number;
 }
 
 type ChecklistKey = 'steps' | 'ac' | 'verify';
@@ -37,8 +38,15 @@ export class MarkdownKanbanParser {
     const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const board: KanbanBoard = {
       title: '',
-      columns: []
+      columns: [],
+      nextId: 1
     };
+
+    // Parse counter from <!-- next-id: N --> comment
+    const counterMatch = content.match(/<!--\s*next-id:\s*(\d+)\s*-->/);
+    if (counterMatch) {
+      board.nextId = parseInt(counterMatch[1]);
+    }
 
     let currentColumn: KanbanColumn | null = null;
     let currentTask: KanbanTask | null = null;
@@ -50,6 +58,11 @@ export class MarkdownKanbanParser {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmedLine = line.trim();
+
+      // Skip HTML comment lines (e.g. <!-- next-id: N -->)
+      if (trimmedLine.startsWith('<!--') && trimmedLine.endsWith('-->')) {
+        continue;
+      }
 
       // 检查代码块标记
       if (trimmedLine.startsWith('```')) {
@@ -212,13 +225,23 @@ export class MarkdownKanbanParser {
       board.columns.push(currentColumn);
     }
 
+    // Auto-assign TSK-N IDs to tasks that don't have one yet (uses counter, no scanning)
+    for (const column of board.columns) {
+      for (const task of column.tasks) {
+        if (!task.id.match(/^TSK-\d+$/)) {
+          task.id = `TSK-${board.nextId}`;
+          board.nextId++;
+        }
+      }
+    }
+
     return board;
   }
 
   private static isTaskTitle(line: string, trimmedLine: string): boolean {
     // 排除属性行和步骤项
     if (line.startsWith('- ') &&
-        (trimmedLine.match(/^\s*- (due|tags|priority|workload|steps|defaultExpanded|desc|ac|verify|files):/) ||
+        (trimmedLine.match(/^\s*- (id|due|tags|priority|workload|steps|defaultExpanded|desc|ac|verify|files):/) ||
          line.match(/^\s{6,}- \[([ x])\]/))) {
       return false;
     }
@@ -228,13 +251,18 @@ export class MarkdownKanbanParser {
   }
 
   private static parseTaskProperty(line: string, task: KanbanTask): string | false {
-    const propertyMatch = line.match(/^\s+- (due|tags|priority|workload|steps|defaultExpanded|desc|ac|verify|files):\s*(.*)$/);
+    const propertyMatch = line.match(/^\s+- (id|due|tags|priority|workload|steps|defaultExpanded|desc|ac|verify|files):\s*(.*)$/);
     if (!propertyMatch) return false;
 
     const [, propertyName, propertyValue] = propertyMatch;
     const value = propertyValue.trim();
 
     switch (propertyName) {
+      case 'id':
+        if (value) {
+          task.id = value;
+        }
+        break;
       case 'due':
         task.dueDate = value;
         break;
@@ -311,7 +339,7 @@ export class MarkdownKanbanParser {
   }
 
   static generateMarkdown(board: KanbanBoard, taskHeaderFormat: 'title' | 'list' = 'title'): string {
-    let markdown = '';
+    let markdown = `<!-- next-id: ${board.nextId} -->\n`;
 
     if (board.title) {
       markdown += `# ${board.title}\n\n`;
@@ -353,6 +381,9 @@ export class MarkdownKanbanParser {
   private static generateTaskProperties(task: KanbanTask): string {
     let properties = '';
 
+    if (task.id && task.id.match(/^TSK-\d+$/)) {
+      properties += `  - id: ${task.id}\n`;
+    }
     if (task.dueDate) {
       properties += `  - due: ${task.dueDate}\n`;
     }
@@ -365,8 +396,8 @@ export class MarkdownKanbanParser {
     if (task.workload) {
       properties += `  - workload: ${task.workload}\n`;
     }
-    if (task.defaultExpanded !== undefined) {
-      properties += `  - defaultExpanded: ${task.defaultExpanded}\n`;
+    if (task.defaultExpanded) {
+      properties += `  - defaultExpanded: true\n`;
     }
     if (task.steps && task.steps.length > 0) {
       properties += this.generateChecklistProperty('steps', task.steps);

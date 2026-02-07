@@ -152,6 +152,23 @@
             </div>
         </div>
     </div>
+    <!-- Task detail modal (read-only view) -->
+    <div id="task-detail-modal" class="modal">
+        <div class="modal-content task-detail-modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="detail-modal-title">Task Details</h3>
+                <div class="detail-modal-header-actions">
+                    <button type="button" class="btn btn-secondary" id="detail-delete-btn">Delete</button>
+                    <button type="button" class="btn btn-primary" id="detail-edit-btn">Edit</button>
+                    <button class="close-btn" onclick="closeTaskDetailModal()">&times;</button>
+                </div>
+            </div>
+            <div class="task-detail-body" id="task-detail-body">
+                <!-- Dynamically generated -->
+            </div>
+        </div>
+    </div>
+
     <script src="./webviewScript.js"></script>
 </body>
 </html>

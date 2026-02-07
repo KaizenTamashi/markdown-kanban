@@ -7,6 +7,17 @@ let currentEditingColumn = null
 let isEditMode = false
 let currentTagFilter = ''
 let currentSort = 'none'
+let currentDetailTask = null
+let currentDetailColumn = null
+let detailReturnTask = null
+let detailReturnColumn = null
+
+// Restore detail modal state after HTML replacement (extension replaces entire HTML on every change)
+const _savedState = vscode.getState()
+if (_savedState && _savedState.detailTask) {
+  currentDetailTask = _savedState.detailTask
+  currentDetailColumn = _savedState.detailColumn
+}
 
 // Listen for messages from the extension
 window.addEventListener('message', event => {
@@ -18,15 +29,47 @@ window.addEventListener('message', event => {
         currentWorkspaceUri = message.workspaceUri
       }
       renderBoard()
+      refreshTaskDetailModal()
       break
     case 'toggleTaskExpansion':
-      toggleTaskExpansion(message.taskId)
+      // Open detail modal instead of inline expand
+      if (currentBoard) {
+        for (const col of currentBoard.columns) {
+          const task = col.tasks.find(t => t.id === message.taskId)
+          if (task) {
+            openTaskDetailModal(message.taskId, col.id)
+            break
+          }
+        }
+      }
       break
     case 'imageInserted':
       insertImageIntoDescription(message.markdownText)
       break
   }
 })
+
+// Get display ID from task (TSK-N format stored in task.id)
+function getTaskDisplayId(task) {
+  if (task.id && task.id.match(/^TSK-\d+$/)) {
+    return task.id
+  }
+  return null
+}
+
+// Copy task ID to clipboard with visual feedback
+function copyTaskId(event, taskId) {
+  event.stopPropagation()
+  navigator.clipboard.writeText(taskId)
+  const badge = event.currentTarget
+  const original = badge.textContent
+  badge.textContent = 'Copied!'
+  badge.classList.add('copied')
+  setTimeout(() => {
+    badge.textContent = original
+    badge.classList.remove('copied')
+  }, 1200)
+}
 
 // Calculate deadline remaining time
 function getDeadlineInfo (dueDate) {
@@ -231,7 +274,6 @@ function createColumnElement (column) {
 }
 
 function createTaskElement (task, columnId) {
-  const isExpanded = getTaskExpansionState(task)
   const priorityClass = task.priority ? `priority-${task.priority}` : ''
   const deadlineInfo = getDeadlineInfo(task.dueDate)
   const stepsProgress = getStepsProgress(task.steps)
@@ -242,28 +284,23 @@ function createTaskElement (task, columnId) {
   const headerProgress = acProgress.total > 0 ? acProgress : stepsProgress
   const headerProgressLabel = acProgress.total > 0 ? 'AC' : 'Steps'
 
+  const taskDisplayId = getTaskDisplayId(task)
+
   return `
-        <div class="task-item ${isExpanded ? 'expanded' : ''}"
+        <div class="task-item"
              data-task-id="${task.id}"
              data-column-id="${columnId}">
             <div class="task-header">
                 <div class="task-drag-handle" title="Drag to move task">⋮⋮</div>
-                <div class="task-title">${task.title}</div>
+                <div class="task-title">${taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}">${taskDisplayId}</span>` : ''}${task.title}</div>
                 <div class="task-meta">
                     ${headerProgress.total > 0
-                      ? `<div class="task-steps-progress${headerProgress.completed === headerProgress.total ? ' progress-complete' : ''}" title="${headerProgressLabel}: ${headerProgress.completed}/${headerProgress.total}">${headerProgress.completed}/${headerProgress.total}</div>`
+                      ? `<div class="task-steps-progress task-ac-progress${headerProgress.completed === headerProgress.total ? ' progress-complete' : ''}" title="${headerProgressLabel}: ${headerProgress.completed}/${headerProgress.total}">${headerProgress.completed}/${headerProgress.total}</div>`
                       : ''}
-                    ${verifyProgress.total > 0
-                      ? `<div class="task-steps-progress task-verify-progress" title="Verify: ${verifyProgress.completed}/${verifyProgress.total}">✓${verifyProgress.completed}/${verifyProgress.total}</div>`
-                      : ''}
-                    ${createPriorityElement(task.priority, priorityClass)}
                 </div>
             </div>
 
-            ${createTaskTagsRow(task, deadlineInfo)}
-            ${createDescriptionPreview(task, isExpanded)}
-            ${createProgressBar(task)}
-            ${createTaskDetails(task, columnId)}
+            ${createCardLabelsRow(task, deadlineInfo, priorityClass)}
             ${createTaskActions(task.id, columnId)}
         </div>
     `
@@ -288,8 +325,33 @@ function createStepsProgressElement(stepsProgress) {
 
 function createPriorityElement(priority, priorityClass) {
   return priority
-    ? `<div class="task-priority ${priorityClass}" title="Priority: ${getPriorityText(priority)}"></div>`
+    ? `<span class="task-priority-badge ${priorityClass}">${getPriorityText(priority)}</span>`
     : ''
+}
+
+function createCardLabelsRow(task, deadlineInfo, priorityClass) {
+  const hasPriority = !!task.priority
+  const hasDeadline = !!deadlineInfo
+  const hasTags = task.tags && task.tags.length > 0
+
+  if (!hasPriority && !hasDeadline && !hasTags) return ''
+
+  let html = '<div class="task-tags">'
+  if (hasPriority) {
+    html += createPriorityElement(task.priority, priorityClass)
+  }
+  if (hasDeadline) {
+    html += createDeadlineElement(deadlineInfo, task.dueDate)
+  }
+  if (hasTags) {
+    html += task.tags.map(tag => {
+      const tagType = getTagType(tag)
+      const dataAttr = tagType ? ` data-tag-type="${tagType}"` : ''
+      return `<span class="task-tag"${dataAttr}>${tag}</span>`
+    }).join('')
+  }
+  html += '</div>'
+  return html
 }
 
 function createTaskTagsRow(task, deadlineInfo) {
@@ -334,8 +396,8 @@ function createDeadlineElement(deadlineInfo, dueDate) {
   return `<div class="task-deadline deadline-${deadlineInfo.status}" title="Due date: ${dueDate}">${deadlineInfo.text}</div>`
 }
 
-function createDescriptionPreview(task, isExpanded) {
-  if (isExpanded || !task.description) return ''
+function createDescriptionPreview(task) {
+  if (!task.description) return ''
   // Show first 80 chars of description as preview when collapsed
   const preview = task.description.replace(/\n/g, ' ').substring(0, 80)
   const ellipsis = task.description.length > 80 ? '...' : ''
@@ -672,8 +734,8 @@ function setupTaskDragAndDrop() {
       const fromColumnId = e.dataTransfer.getData('application/column-id')
 
       if (taskId && fromColumnId) {
-        const dropIndex = calculateDropIndex(tasksContainer, e.clientY, fromColumnId, columnId)
-        
+        const dropIndex = calculateDropIndex(tasksContainer, e.clientY, fromColumnId, columnId, taskId)
+
         vscode.postMessage({
           type: 'moveTask',
           taskId: taskId,
@@ -684,13 +746,14 @@ function setupTaskDragAndDrop() {
       }
     })
 
-    columnElement.querySelectorAll('.task-drag-handle').forEach(handle => {
-      setupTaskDragHandle(handle)
+    // Make entire task card draggable (not just the handle)
+    columnElement.querySelectorAll('.task-item').forEach(taskItem => {
+      setupTaskCardDrag(taskItem)
     })
   })
 }
 
-function calculateDropIndex(tasksContainer, clientY, fromColumnId, toColumnId) {
+function calculateDropIndex(tasksContainer, clientY, fromColumnId, toColumnId, taskId) {
   const tasks = Array.from(tasksContainer.children)
   let dropIndex = tasks.length
 
@@ -706,7 +769,7 @@ function calculateDropIndex(tasksContainer, clientY, fromColumnId, toColumnId) {
   }
 
   if (fromColumnId === toColumnId) {
-    const draggedTaskElement = tasksContainer.querySelector('[data-task-id="' + e.dataTransfer.getData('text/plain') + '"]')
+    const draggedTaskElement = tasksContainer.querySelector('[data-task-id="' + taskId + '"]')
     if (draggedTaskElement) {
       const currentIndex = Array.from(tasks).indexOf(draggedTaskElement)
       if (dropIndex > currentIndex) {
@@ -730,62 +793,49 @@ function handleTaskClick(e) {
     '.task-drag-handle',
     '.step-drag-handle',
     '.action-btn',
-    '.task-step-item',
-    '.task-steps',
     'input[type="checkbox"]',
-    '.task-step-text',
     '.file-link',
-    '.task-files'
+    '.task-number'
   ]
-  
+
   for (const selector of ignoredSelectors) {
     if (e.target.matches(selector) || e.target.closest(selector)) {
       return
     }
   }
-  
+
   const taskItem = e.target.closest('.task-item')
   if (taskItem) {
     const taskId = taskItem.dataset.taskId
-    if (taskId) {
-      toggleTaskExpansion(taskId)
+    const columnId = taskItem.dataset.columnId
+    if (taskId && columnId) {
+      openTaskDetailModal(taskId, columnId)
     }
   }
 }
 
-// Setup task drag handle
-function setupTaskDragHandle(handle) {
-  handle.draggable = true
-  
-  handle.addEventListener('dragstart', e => {
-    const taskItem = e.target.closest('.task-item')
-    if (taskItem) {
-      e.stopPropagation()
-      e.dataTransfer.setData('text/plain', taskItem.dataset.taskId)
-      e.dataTransfer.setData('application/column-id', taskItem.dataset.columnId)
-      e.dataTransfer.effectAllowed = 'move'
-      
-      const dragImage = createDragImage(taskItem, e.offsetX, e.offsetY)
-      e.dataTransfer.setDragImage(dragImage, e.offsetX, e.offsetY)
-      
-      taskItem.classList.add('dragging')
+// Setup entire task card as draggable
+function setupTaskCardDrag(taskItem) {
+  taskItem.draggable = true
+
+  taskItem.addEventListener('dragstart', e => {
+    // Don't drag if interacting with buttons/checkboxes
+    if (e.target.matches('.action-btn, input[type="checkbox"]') || e.target.closest('.action-btn')) {
+      e.preventDefault()
+      return
     }
+    e.dataTransfer.setData('text/plain', taskItem.dataset.taskId)
+    e.dataTransfer.setData('application/column-id', taskItem.dataset.columnId)
+    e.dataTransfer.effectAllowed = 'move'
+
+    const dragImage = createDragImage(taskItem, e.offsetX, e.offsetY)
+    e.dataTransfer.setDragImage(dragImage, e.offsetX, e.offsetY)
+
+    taskItem.classList.add('dragging')
   })
 
-  handle.addEventListener('dragend', e => {
-    const taskItem = e.target.closest('.task-item')
-    if (taskItem) {
-      taskItem.classList.remove('dragging')
-    }
-  })
-
-  handle.addEventListener('mousedown', e => {
-    e.stopPropagation()
-  })
-  
-  handle.addEventListener('click', e => {
-    e.stopPropagation()
-    e.preventDefault()
+  taskItem.addEventListener('dragend', () => {
+    taskItem.classList.remove('dragging')
   })
 }
 
@@ -1073,6 +1123,205 @@ function closeTaskModal () {
   currentEditingTask = null
   currentEditingColumn = null
   isEditMode = false
+
+  // Return to detail modal if edit was opened from it
+  if (detailReturnTask && detailReturnColumn) {
+    var returnTask = detailReturnTask
+    var returnCol = detailReturnColumn
+    detailReturnTask = null
+    detailReturnColumn = null
+    openTaskDetailModal(returnTask, returnCol)
+  }
+}
+
+// =============================================
+// Task Detail Modal (read-only view with checkboxes)
+// =============================================
+
+function openTaskDetailModal (taskId, columnId) {
+  if (!currentBoard) return
+
+  const column = currentBoard.columns.find(col => col.id === columnId)
+  if (!column) return
+  const task = column.tasks.find(t => t.id === taskId)
+  if (!task) return
+
+  currentDetailTask = taskId
+  currentDetailColumn = columnId
+
+  const taskDisplayId = getTaskDisplayId(task)
+
+  const modal = document.getElementById('task-detail-modal')
+  document.getElementById('detail-modal-title').innerHTML = (taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}">${taskDisplayId}</span> ` : '') + task.title
+  document.getElementById('task-detail-body').innerHTML = renderTaskDetailContent(task, columnId)
+
+  document.getElementById('detail-edit-btn').onclick = () => {
+    detailReturnTask = taskId
+    detailReturnColumn = columnId
+    closeTaskDetailModal()
+    editTask(taskId, columnId)
+  }
+
+  document.getElementById('detail-delete-btn').onclick = () => {
+    closeTaskDetailModal()
+    deleteTask(taskId, columnId)
+  }
+
+  modal.style.display = 'block'
+  vscode.setState(Object.assign({}, vscode.getState() || {}, { detailTask: taskId, detailColumn: columnId }))
+}
+
+function renderTaskDetailContent (task, columnId) {
+  const priorityClass = task.priority ? `priority-${task.priority}` : ''
+  const deadlineInfo = getDeadlineInfo(task.dueDate)
+  const stepsProgress = getStepsProgress(task.steps)
+  const acProgress = getStepsProgress(task.ac)
+  const verifyProgress = getStepsProgress(task.verify)
+
+  let html = ''
+
+  // Meta row (priority, deadline, workload)
+  if (task.priority || deadlineInfo || task.workload) {
+    html += '<div class="detail-meta-row">'
+    if (task.priority) {
+      html += `<span class="task-priority-badge ${priorityClass}">${getPriorityText(task.priority)} Priority</span>`
+    }
+    if (deadlineInfo) {
+      html += `<span class="task-deadline deadline-${deadlineInfo.status}">${deadlineInfo.text}</span>`
+    }
+    if (task.workload) {
+      html += `<span class="task-workload workload-${task.workload.toLowerCase()}">${task.workload}</span>`
+    }
+    html += '</div>'
+  }
+
+  // Tags
+  if (task.tags && task.tags.length > 0) {
+    html += `<div class="detail-tags-row">${task.tags.map(tag => {
+      const tagType = getTagType(tag)
+      const dataAttr = tagType ? ` data-tag-type="${tagType}"` : ''
+      return `<span class="task-tag"${dataAttr}>${tag}</span>`
+    }).join('')}</div>`
+  }
+
+  // Description
+  if (task.description) {
+    html += `<div class="detail-section">
+      <div class="detail-section-header">Description</div>
+      <div class="detail-description">${renderDescriptionHtml(task.description)}</div>
+    </div>`
+  }
+
+  // AC checklist
+  if (task.ac && task.ac.length > 0) {
+    html += `<div class="detail-section">
+      <div class="detail-section-header">AC: <span class="detail-progress">${acProgress.completed}/${acProgress.total}</span></div>
+      ${renderDetailChecklist(task, columnId, 'ac')}
+    </div>`
+  }
+
+  // Verify checklist
+  if (task.verify && task.verify.length > 0) {
+    html += `<div class="detail-section">
+      <div class="detail-section-header detail-verify-header">Verify: <span class="detail-progress">${verifyProgress.completed}/${verifyProgress.total}</span></div>
+      ${renderDetailChecklist(task, columnId, 'verify')}
+    </div>`
+  }
+
+  // Steps
+  if (task.steps && task.steps.length > 0) {
+    html += `<div class="detail-section">
+      <div class="detail-section-header">Steps: <span class="detail-progress">${stepsProgress.completed}/${stepsProgress.total}</span></div>
+      ${renderDetailSteps(task, columnId)}
+    </div>`
+  }
+
+  // Files
+  if (task.files) {
+    html += `<div class="detail-section">
+      <div class="detail-section-header">Files</div>
+      <div class="detail-files-value">${renderFilesHtml(task.files)}</div>
+    </div>`
+  }
+
+  return html
+}
+
+function renderDetailChecklist (task, columnId, listKey) {
+  const items = task[listKey]
+  if (!items || items.length === 0) return ''
+
+  return items.map((item, index) => `
+    <div class="detail-checklist-item">
+      <input type="checkbox"
+             ${item.completed ? 'checked' : ''}
+             onchange="updateChecklistItem('${task.id}', '${columnId}', '${listKey}', ${index}, this.checked)">
+      <span class="detail-checklist-text ${item.completed ? 'completed' : ''}">${item.text}</span>
+    </div>
+  `).join('')
+}
+
+function renderDetailSteps (task, columnId) {
+  return task.steps.map((step, index) => `
+    <div class="detail-checklist-item">
+      <input type="checkbox"
+             ${step.completed ? 'checked' : ''}
+             onchange="updateTaskStep('${task.id}', '${columnId}', ${index}, this.checked)">
+      <span class="detail-checklist-text ${step.completed ? 'completed' : ''}">${step.text}</span>
+    </div>
+  `).join('')
+}
+
+function closeTaskDetailModal () {
+  document.getElementById('task-detail-modal').style.display = 'none'
+  currentDetailTask = null
+  currentDetailColumn = null
+  var _st = vscode.getState() || {}
+  delete _st.detailTask
+  delete _st.detailColumn
+  vscode.setState(_st)
+}
+
+function refreshTaskDetailModal () {
+  if (!currentDetailTask || !currentBoard) return
+
+  // Search all columns for the task (it might have moved)
+  let task = null
+  let columnId = null
+  for (const col of currentBoard.columns) {
+    const found = col.tasks.find(t => t.id === currentDetailTask)
+    if (found) {
+      task = found
+      columnId = col.id
+      break
+    }
+  }
+
+  if (!task) {
+    closeTaskDetailModal()
+    return
+  }
+
+  currentDetailColumn = columnId
+  const taskDisplayId = getTaskDisplayId(task)
+
+  const modal = document.getElementById('task-detail-modal')
+  document.getElementById('detail-modal-title').innerHTML = (taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}">${taskDisplayId}</span> ` : '') + task.title
+  document.getElementById('task-detail-body').innerHTML = renderTaskDetailContent(task, columnId)
+
+  document.getElementById('detail-edit-btn').onclick = () => {
+    detailReturnTask = task.id
+    detailReturnColumn = columnId
+    closeTaskDetailModal()
+    editTask(task.id, columnId)
+  }
+
+  document.getElementById('detail-delete-btn').onclick = () => {
+    closeTaskDetailModal()
+    deleteTask(task.id, columnId)
+  }
+
+  modal.style.display = 'block'
 }
 
 function editTask (taskId, columnId) {
@@ -1830,6 +2079,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('hide-filters').addEventListener('click', () => {
     toggleFilters(false)
   })
+
+  // Copy task ID on click (delegated)
+  document.addEventListener('click', e => {
+    const badge = e.target.closest('[data-copy-id]')
+    if (badge) {
+      copyTaskId(e, badge.dataset.copyId)
+    }
+  })
+
+  // Request board data on load (handles race condition when HTML is first set)
+  vscode.postMessage({ type: 'requestBoard' })
 })
 
 // Form submission handling
@@ -1888,5 +2148,32 @@ document.getElementById('confirm-modal').addEventListener('click', e => {
 document.getElementById('input-modal').addEventListener('click', e => {
   if (e.target.id === 'input-modal') {
     closeInputModal()
+  }
+})
+
+// Close detail modal when clicking outside
+document.getElementById('task-detail-modal').addEventListener('click', e => {
+  if (e.target.id === 'task-detail-modal') {
+    closeTaskDetailModal()
+  }
+})
+
+// ESC key closes modals (topmost first)
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const taskModal = document.getElementById('task-modal')
+    const confirmModal = document.getElementById('confirm-modal')
+    const inputModal = document.getElementById('input-modal')
+    const detailModal = document.getElementById('task-detail-modal')
+
+    if (confirmModal.style.display === 'block') {
+      closeConfirmModal()
+    } else if (inputModal.style.display === 'block') {
+      closeInputModal()
+    } else if (taskModal.style.display === 'block') {
+      closeTaskModal()
+    } else if (detailModal.style.display === 'block') {
+      closeTaskDetailModal()
+    }
   }
 })
