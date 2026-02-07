@@ -121,6 +121,9 @@ export class KanbanWebviewPanel {
             case 'updateTaskStep':
                 this.updateTaskStep(message.taskId, message.columnId, message.stepIndex, message.completed);
                 break;
+            case 'updateChecklistItem':
+                this.updateChecklistItem(message.taskId, message.columnId, message.listKey, message.stepIndex, message.completed);
+                break;
             case 'reorderTaskSteps':
                 this.reorderTaskSteps(message.taskId, message.columnId, message.newOrder);
                 break;
@@ -295,6 +298,20 @@ export class KanbanWebviewPanel {
             }
 
             result.task.steps[stepIndex].completed = completed;
+        });
+    }
+
+    private updateChecklistItem(taskId: string, columnId: string, listKey: string, stepIndex: number, completed: boolean) {
+        this.performAction(() => {
+            const result = this.findTask(columnId, taskId);
+            if (!result) return;
+
+            const checklist = (result.task as any)[listKey];
+            if (!checklist || stepIndex < 0 || stepIndex >= checklist.length) {
+                return;
+            }
+
+            checklist[stepIndex].completed = completed;
         });
     }
 

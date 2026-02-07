@@ -9,6 +9,9 @@ export interface KanbanTask {
   startDate?: string;
   defaultExpanded?: boolean;
   steps?: Array<{ text: string; completed: boolean }>;
+  ac?: Array<{ text: string; completed: boolean }>;
+  verify?: Array<{ text: string; completed: boolean }>;
+  files?: string;
 }
 
 export interface KanbanColumn {
@@ -22,6 +25,8 @@ export interface KanbanBoard {
   title: string;
   columns: KanbanColumn[];
 }
+
+type ChecklistKey = 'steps' | 'ac' | 'verify';
 
 export class MarkdownKanbanParser {
   private static generateId(): string {
@@ -40,6 +45,7 @@ export class MarkdownKanbanParser {
     let inTaskProperties = false;
     let inTaskDescription = false;
     let inCodeBlock = false;
+    let activeListKey: ChecklistKey | null = null;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -63,7 +69,7 @@ export class MarkdownKanbanParser {
           continue;
         } else {
           const cleanLine = line.replace(/^\s{4,}/, '');
-          currentTask.description = currentTask.description 
+          currentTask.description = currentTask.description
             ? currentTask.description + '\n' + cleanLine
             : cleanLine;
         }
@@ -77,6 +83,7 @@ export class MarkdownKanbanParser {
         currentTask = null;
         inTaskProperties = false;
         inTaskDescription = false;
+        activeListKey = null;
         continue;
       }
 
@@ -87,16 +94,16 @@ export class MarkdownKanbanParser {
         if (currentColumn) {
           board.columns.push(currentColumn);
         }
-        
+
         let columnTitle = trimmedLine.substring(3).trim();
         let isArchived = false;
-        
+
         // 检查是否包含 [Archived] 标记
         if (columnTitle.endsWith('[Archived]')) {
           isArchived = true;
           columnTitle = columnTitle.replace(/\s*\[Archived\]$/, '').trim();
         }
-        
+
         currentColumn = {
           id: this.generateId(),
           title: columnTitle,
@@ -105,6 +112,7 @@ export class MarkdownKanbanParser {
         };
         inTaskProperties = false;
         inTaskDescription = false;
+        activeListKey = null;
         continue;
       }
 
@@ -114,7 +122,7 @@ export class MarkdownKanbanParser {
 
         if (currentColumn) {
           let taskTitle = '';
-          
+
           if (trimmedLine.startsWith('### ')) {
             taskTitle = trimmedLine.substring(4).trim();
           } else {
@@ -132,26 +140,35 @@ export class MarkdownKanbanParser {
           };
           inTaskProperties = true;
           inTaskDescription = false;
+          activeListKey = null;
         }
         continue;
       }
 
       // 解析任务属性
       if (!inCodeBlock && currentTask && inTaskProperties) {
-        if (this.parseTaskProperty(line, currentTask)) {
+        const parsedKey = this.parseTaskProperty(line, currentTask);
+        if (parsedKey !== false) {
+          // Track which checklist we're currently in
+          if (parsedKey === 'steps' || parsedKey === 'ac' || parsedKey === 'verify') {
+            activeListKey = parsedKey;
+          } else {
+            activeListKey = null;
+          }
           continue;
         }
-        
-        // 解析 steps 中的具体步骤项
-        if (this.parseTaskStep(line, currentTask)) {
+
+        // 解析 checklist 中的具体步骤项 (steps, ac, verify)
+        if (this.parseChecklistItem(line, currentTask, activeListKey)) {
           continue;
         }
-        
+
         // Legacy: support ```md code blocks for backward compatibility
         if (line.match(/^\s+```md/)) {
           inTaskProperties = false;
           inTaskDescription = true;
           inCodeBlock = true;
+          activeListKey = null;
           continue;
         }
 
@@ -184,6 +201,7 @@ export class MarkdownKanbanParser {
         currentTask = null;
         inTaskProperties = false;
         inTaskDescription = false;
+        activeListKey = null;
         i--;
       }
     }
@@ -199,18 +217,18 @@ export class MarkdownKanbanParser {
 
   private static isTaskTitle(line: string, trimmedLine: string): boolean {
     // 排除属性行和步骤项
-    if (line.startsWith('- ') && 
-        (trimmedLine.match(/^\s*- (due|tags|priority|workload|steps|defaultExpanded):/) ||
+    if (line.startsWith('- ') &&
+        (trimmedLine.match(/^\s*- (due|tags|priority|workload|steps|defaultExpanded|desc|ac|verify|files):/) ||
          line.match(/^\s{6,}- \[([ x])\]/))) {
       return false;
     }
-    
-    return (line.startsWith('- ') && !line.startsWith('  ')) || 
+
+    return (line.startsWith('- ') && !line.startsWith('  ')) ||
            trimmedLine.startsWith('### ');
   }
 
-  private static parseTaskProperty(line: string, task: KanbanTask): boolean {
-    const propertyMatch = line.match(/^\s+- (due|tags|priority|workload|steps|defaultExpanded|desc):\s*(.*)$/);
+  private static parseTaskProperty(line: string, task: KanbanTask): string | false {
+    const propertyMatch = line.match(/^\s+- (due|tags|priority|workload|steps|defaultExpanded|desc|ac|verify|files):\s*(.*)$/);
     if (!propertyMatch) return false;
 
     const [, propertyName, propertyValue] = propertyMatch;
@@ -242,6 +260,15 @@ export class MarkdownKanbanParser {
       case 'steps':
         task.steps = [];
         break;
+      case 'ac':
+        task.ac = [];
+        break;
+      case 'verify':
+        task.verify = [];
+        break;
+      case 'files':
+        task.files = value;
+        break;
       case 'desc':
         // Inline text after `- desc:` starts the description
         if (value) {
@@ -251,19 +278,22 @@ export class MarkdownKanbanParser {
         }
         break;
     }
-    return true;
+    return propertyName;
   }
 
-  private static parseTaskStep(line: string, task: KanbanTask): boolean {
-    if (!task.steps) return false;
-    
+  private static parseChecklistItem(line: string, task: KanbanTask, listKey: ChecklistKey | null): boolean {
+    if (!listKey) return false;
+
+    const targetList = task[listKey];
+    if (!targetList) return false;
+
     const stepMatch = line.match(/^\s{6,}- \[([ x])\]\s*(.*)$/);
     if (!stepMatch) return false;
 
     const [, checkmark, text] = stepMatch;
-    task.steps.push({ 
-      text: text.trim(), 
-      completed: checkmark === 'x' 
+    targetList.push({
+      text: text.trim(),
+      completed: checkmark === 'x'
     });
     return true;
   }
@@ -339,13 +369,27 @@ export class MarkdownKanbanParser {
       properties += `  - defaultExpanded: ${task.defaultExpanded}\n`;
     }
     if (task.steps && task.steps.length > 0) {
-      properties += `  - steps:\n`;
-      for (const step of task.steps) {
-        const checkbox = step.completed ? '[x]' : '[ ]';
-        properties += `      - ${checkbox} ${step.text}\n`;
-      }
+      properties += this.generateChecklistProperty('steps', task.steps);
+    }
+    if (task.ac && task.ac.length > 0) {
+      properties += this.generateChecklistProperty('ac', task.ac);
+    }
+    if (task.verify && task.verify.length > 0) {
+      properties += this.generateChecklistProperty('verify', task.verify);
+    }
+    if (task.files) {
+      properties += `  - files: ${task.files}\n`;
     }
 
     return properties;
+  }
+
+  private static generateChecklistProperty(key: string, items: Array<{ text: string; completed: boolean }>): string {
+    let output = `  - ${key}:\n`;
+    for (const item of items) {
+      const checkbox = item.completed ? '[x]' : '[ ]';
+      output += `      - ${checkbox} ${item.text}\n`;
+    }
+    return output;
   }
 }

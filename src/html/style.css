@@ -631,12 +631,46 @@ body.filters-visible {
 }
 
 .task-tag {
-    background-color: #e3f2fd;
-    color: #1976d2;
+    background-color: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 11px;
     font-weight: 500;
+}
+
+/* Semantic tag colors by type prefix */
+.task-tag[data-tag-type="feature"] {
+    background-color: #1a7f37;
+    color: #fff;
+}
+
+.task-tag[data-tag-type="bug"] {
+    background-color: #cf222e;
+    color: #fff;
+}
+
+.task-tag[data-tag-type="chore"] {
+    background-color: #656d76;
+    color: #fff;
+}
+
+.task-tag[data-tag-type="enhance"] {
+    background-color: #8250df;
+    color: #fff;
+}
+
+.task-tag[data-tag-type="docs"] {
+    background-color: #0969da;
+    color: #fff;
+}
+
+/* Area tags — subtle outline style */
+.task-tag[data-tag-type="area"] {
+    background-color: transparent;
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-panel-border);
+    opacity: 0.8;
 }
 
 .task-tag.workload-tag {
@@ -1223,6 +1257,18 @@ body.filters-visible {
     margin-right: 4px;
 }
 
+/* Verify progress — distinct green tint */
+.task-verify-progress {
+    background-color: #1a7f37;
+    color: #fff;
+}
+
+/* AC progress — complete state */
+.task-steps-progress.progress-complete {
+    background-color: #1a7f37;
+    color: #fff;
+}
+
 /* Step drag handle */
 .step-drag-handle {
     color: var(--vscode-descriptionForeground);
@@ -1287,4 +1333,98 @@ body.filters-visible {
 .task-step-item.drag-insert-after {
     border-bottom: 2px solid var(--vscode-focusBorder);
     margin-bottom: 2px;
+}
+
+/* Files section */
+.task-files {
+    margin: 10px 0 4px;
+    padding: 6px 8px;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.task-files-label {
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.task-files-value {
+    color: var(--vscode-descriptionForeground);
+}
+
+.file-link {
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.file-link:hover {
+    color: var(--vscode-textLink-activeForeground);
+}
+
+/* Checklist-specific header colors */
+.task-checklist-ac .task-steps-header {
+    color: var(--vscode-foreground);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    margin-bottom: 6px;
+}
+
+.task-checklist-verify .task-steps-header {
+    color: #1a7f37;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    margin-bottom: 6px;
+}
+
+/* Description preview on collapsed card */
+.task-desc-preview {
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    line-height: 1.4;
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+/* Mini progress bar under card header */
+.task-progress-bar {
+    height: 3px;
+    background-color: var(--vscode-input-border);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+
+.task-progress-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.task-progress-bar-fill.fill-ac {
+    background-color: #0969da;
+}
+
+.task-progress-bar-fill.fill-steps {
+    background-color: var(--vscode-badge-background);
+}
+
+.task-progress-bar-fill.fill-complete {
+    background-color: #1a7f37;
 }

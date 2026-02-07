@@ -235,6 +235,12 @@ function createTaskElement (task, columnId) {
   const priorityClass = task.priority ? `priority-${task.priority}` : ''
   const deadlineInfo = getDeadlineInfo(task.dueDate)
   const stepsProgress = getStepsProgress(task.steps)
+  const acProgress = getStepsProgress(task.ac)
+  const verifyProgress = getStepsProgress(task.verify)
+
+  // Show AC progress in header if available, otherwise steps progress
+  const headerProgress = acProgress.total > 0 ? acProgress : stepsProgress
+  const headerProgressLabel = acProgress.total > 0 ? 'AC' : 'Steps'
 
   return `
         <div class="task-item ${isExpanded ? 'expanded' : ''}"
@@ -244,12 +250,19 @@ function createTaskElement (task, columnId) {
                 <div class="task-drag-handle" title="Drag to move task">⋮⋮</div>
                 <div class="task-title">${task.title}</div>
                 <div class="task-meta">
-                    ${createStepsProgressElement(stepsProgress)}
+                    ${headerProgress.total > 0
+                      ? `<div class="task-steps-progress${headerProgress.completed === headerProgress.total ? ' progress-complete' : ''}" title="${headerProgressLabel}: ${headerProgress.completed}/${headerProgress.total}">${headerProgress.completed}/${headerProgress.total}</div>`
+                      : ''}
+                    ${verifyProgress.total > 0
+                      ? `<div class="task-steps-progress task-verify-progress" title="Verify: ${verifyProgress.completed}/${verifyProgress.total}">✓${verifyProgress.completed}/${verifyProgress.total}</div>`
+                      : ''}
                     ${createPriorityElement(task.priority, priorityClass)}
                 </div>
             </div>
 
             ${createTaskTagsRow(task, deadlineInfo)}
+            ${createDescriptionPreview(task, isExpanded)}
+            ${createProgressBar(task)}
             ${createTaskDetails(task, columnId)}
             ${createTaskActions(task.id, columnId)}
         </div>
@@ -291,12 +304,27 @@ function createTaskTagsRow(task, deadlineInfo) {
   `
 }
 
+function getTagType(tag) {
+  const t = tag.toLowerCase()
+  if (t === 'feature' || t === 'feat' || t.startsWith('type/feat')) return 'feature'
+  if (t === 'bug' || t === 'fix' || t.startsWith('type/bug') || t.startsWith('type/fix')) return 'bug'
+  if (t === 'chore' || t.startsWith('type/chore')) return 'chore'
+  if (t === 'enhance' || t === 'enhancement' || t.startsWith('type/enhance')) return 'enhance'
+  if (t === 'docs' || t.startsWith('type/docs')) return 'docs'
+  if (t.startsWith('area/') || t === 'admin' || t === 'storefront' || t === 'checkout' || t === 'cart' || t === 'catalog' || t === 'auth' || t === 'email' || t === 'shipping') return 'area'
+  return ''
+}
+
 function createTaskTagsElement(task) {
-  const workloadTag = task.workload 
+  const workloadTag = task.workload
     ? `<span class="task-tag workload-tag workload-${task.workload.toLowerCase()}">${task.workload}</span>`
     : ''
-  const tags = task.tags && task.tags.length > 0 
-    ? task.tags.map(tag => `<span class="task-tag">${tag}</span>`).join('')
+  const tags = task.tags && task.tags.length > 0
+    ? task.tags.map(tag => {
+        const tagType = getTagType(tag)
+        const dataAttr = tagType ? ` data-tag-type="${tagType}"` : ''
+        return `<span class="task-tag"${dataAttr}>${tag}</span>`
+      }).join('')
     : ''
 
   return `<div class="task-tags">${workloadTag}${tags}</div>`
@@ -304,6 +332,32 @@ function createTaskTagsElement(task) {
 
 function createDeadlineElement(deadlineInfo, dueDate) {
   return `<div class="task-deadline deadline-${deadlineInfo.status}" title="Due date: ${dueDate}">${deadlineInfo.text}</div>`
+}
+
+function createDescriptionPreview(task, isExpanded) {
+  if (isExpanded || !task.description) return ''
+  // Show first 80 chars of description as preview when collapsed
+  const preview = task.description.replace(/\n/g, ' ').substring(0, 80)
+  const ellipsis = task.description.length > 80 ? '...' : ''
+  return `<div class="task-desc-preview">${preview.replace(/</g, '&lt;').replace(/>/g, '&gt;')}${ellipsis}</div>`
+}
+
+function createProgressBar(task) {
+  const acProgress = getStepsProgress(task.ac)
+  const stepsProgress = getStepsProgress(task.steps)
+  const progress = acProgress.total > 0 ? acProgress : stepsProgress
+
+  if (progress.total === 0) return ''
+
+  const pct = Math.round((progress.completed / progress.total) * 100)
+  const isComplete = progress.completed === progress.total
+  const fillClass = isComplete ? 'fill-complete' : (acProgress.total > 0 ? 'fill-ac' : 'fill-steps')
+
+  return `
+    <div class="task-progress-bar">
+      <div class="task-progress-bar-fill ${fillClass}" style="width: ${pct}%"></div>
+    </div>
+  `
 }
 
 // Render markdown images as hover-preview links (like VS Code's native markdown preview)
@@ -351,9 +405,21 @@ function createTaskDetails(task, columnId) {
   const description = task.description
     ? `<div class="task-description">${renderDescriptionHtml(task.description)}</div>`
     : ''
-  
+
   const steps = task.steps && task.steps.length > 0
     ? createTaskStepsElement(task, columnId)
+    : ''
+
+  const ac = task.ac && task.ac.length > 0
+    ? createChecklistElement(task, columnId, 'ac', 'AC:')
+    : ''
+
+  const verify = task.verify && task.verify.length > 0
+    ? createChecklistElement(task, columnId, 'verify', 'Verify:')
+    : ''
+
+  const filesInfo = task.files
+    ? `<div class="task-files"><span class="task-files-label">Files:</span> <span class="task-files-value">${renderFilesHtml(task.files)}</span></div>`
     : ''
 
   const info = createTaskInfoElement(task)
@@ -361,7 +427,10 @@ function createTaskDetails(task, columnId) {
   return `
     <div class="task-details">
         ${description}
+        ${ac}
+        ${verify}
         ${steps}
+        ${filesInfo}
         ${info}
     </div>
   `
@@ -387,6 +456,46 @@ function createTaskStepsElement(task, columnId) {
         </div>
     </div>
   `
+}
+
+function createChecklistElement(task, columnId, listKey, headerLabel) {
+  const items = task[listKey]
+  if (!items || items.length === 0) return ''
+
+  const itemsList = items.map((item, index) => `
+    <div class="task-step-item" data-step-index="${index}">
+        <input type="checkbox"
+               ${item.completed ? 'checked' : ''}
+               onchange="updateChecklistItem('${task.id}', '${columnId}', '${listKey}', ${index}, this.checked)"
+               onclick="event.stopPropagation()">
+        <span class="task-step-text ${item.completed ? 'completed' : ''}">${item.text}</span>
+    </div>
+  `).join('')
+
+  return `
+    <div class="task-steps task-checklist-${listKey}">
+        <div class="task-steps-header">${headerLabel}</div>
+        <div class="task-steps-list" data-task-id="${task.id}" data-column-id="${columnId}" data-list-key="${listKey}">
+            ${itemsList}
+        </div>
+    </div>
+  `
+}
+
+function renderFilesHtml(filesText) {
+  let safe = filesText
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+
+  // Convert [text](path) markdown links to clickable links
+  safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, path) => {
+    const escapedPath = path.replace(/'/g, "\\'")
+    return `<span class="file-link" onclick="event.stopPropagation(); vscode.postMessage({type: 'openFile', path: '${escapedPath}'})">${text}</span>`
+  })
+
+  return safe
 }
 
 function createTaskInfoElement(task) {
@@ -619,12 +728,14 @@ function setupTaskExpansionEvents() {
 function handleTaskClick(e) {
   const ignoredSelectors = [
     '.task-drag-handle',
-    '.step-drag-handle', 
+    '.step-drag-handle',
     '.action-btn',
     '.task-step-item',
     '.task-steps',
     'input[type="checkbox"]',
-    '.task-step-text'
+    '.task-step-text',
+    '.file-link',
+    '.task-files'
   ]
   
   for (const selector of ignoredSelectors) {
@@ -983,6 +1094,17 @@ function updateTaskStep (taskId, columnId, stepIndex, completed) {
     type: 'updateTaskStep',
     taskId: taskId,
     columnId: columnId,
+    stepIndex: stepIndex,
+    completed: completed
+  })
+}
+
+function updateChecklistItem (taskId, columnId, listKey, stepIndex, completed) {
+  vscode.postMessage({
+    type: 'updateChecklistItem',
+    taskId: taskId,
+    columnId: columnId,
+    listKey: listKey,
     stepIndex: stepIndex,
     completed: completed
   })
