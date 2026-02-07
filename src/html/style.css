@@ -27,7 +27,7 @@ body {
     align-items: center;
     gap: 0;
     margin-bottom: 12px;
-    background: var(--vscode-sideBar-background);
+    background: transparent;
     border: 1px solid var(--vscode-panel-border);
     border-radius: 6px;
     padding: 2px;
@@ -73,6 +73,15 @@ body {
     font-size: 10px;
     opacity: 0.6;
     margin-left: 3px;
+}
+
+.column-tab-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
 }
 
 .kanban-header {
@@ -183,19 +192,19 @@ body.filters-visible {
 
 .kanban-board {
     display: flex;
-    gap: 20px;
+    gap: 24px;
     min-height: calc(100vh - 150px);
     padding-bottom: 20px;
 }
 
 .kanban-column {
-    background-color: var(--vscode-sideBar-background);
-    border-radius: 8px;
-    padding: 16px;
+    background-color: transparent;
+    border-radius: 0;
+    padding: 0 8px;
     min-width: 300px;
     max-width: 350px;
     flex-shrink: 0;
-    border: 1px solid var(--vscode-panel-border);
+    border: none;
     position: relative;
 }
 
@@ -211,14 +220,14 @@ body.filters-visible {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
     padding-bottom: 8px;
-    border-bottom: 2px solid var(--vscode-panel-border);
+    border-bottom: 1px solid var(--vscode-panel-border);
     cursor: move;
 }
 
 .column-title {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--vscode-foreground);
 }
@@ -235,13 +244,47 @@ body.filters-visible {
     gap: 8px;
 }
 
+.column-status-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.column-status-dot.dot-green { background-color: #3fb950; }
+.column-status-dot.dot-purple { background-color: #a371f7; }
+.column-status-dot.dot-blue { background-color: #58a6ff; }
+.column-status-dot.dot-yellow { background-color: #d29922; }
+.column-status-dot.dot-red { background-color: #f85149; }
+.column-status-dot.dot-gray { background-color: #8b949e; }
+.column-status-dot.dot-default { background-color: #8b949e; }
+
+.task-repo-label {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.task-repo-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #3fb950;
+}
+.task-header-content {
+    flex: 1;
+    min-width: 0;
+}
+
 .task-count {
     background-color: var(--vscode-badge-background);
     color: var(--vscode-badge-foreground);
-    border-radius: 12px;
+    border-radius: 10px;
     padding: 2px 8px;
     font-size: 12px;
-    font-weight: 500;
+    font-weight: 400;
+    line-height: 20px;
 }
 
 .column-menu-btn {
@@ -471,11 +514,11 @@ body.filters-visible {
 }
 
 .task-item {
-    background-color: var(--vscode-editor-background);
+    background-color: var(--vscode-sideBar-background);
     border: 1px solid var(--vscode-panel-border);
     border-radius: 6px;
-    padding: 12px;
-    margin-bottom: 8px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
     cursor: grab;
     transition: all 0.2s ease;
     position: relative;
@@ -487,7 +530,6 @@ body.filters-visible {
 
 .task-item:hover {
     border-color: var(--vscode-focusBorder);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .task-item.expanded {
@@ -503,7 +545,7 @@ body.filters-visible {
     justify-content: space-between;
     align-items: flex-start;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 0;
 }
 
 .task-drag-handle {
@@ -512,7 +554,7 @@ body.filters-visible {
     font-size: 14px;
     padding: 4px 2px;
     user-select: none;
-    opacity: 0.6;
+    opacity: 0;
     transition: opacity 0.2s;
     flex-shrink: 0;
     line-height: 1;
@@ -520,7 +562,7 @@ body.filters-visible {
 }
 
 .task-item:hover .task-drag-handle {
-    opacity: 0.9;
+    opacity: 0.5;
 }
 
 .task-drag-handle:hover {
@@ -534,10 +576,10 @@ body.filters-visible {
 
 .task-title {
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--vscode-foreground);
     flex: 1;
-    line-height: 1.4;
+    line-height: 1.3;
     word-break: break-word;
 }
 
@@ -653,7 +695,7 @@ body.filters-visible {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: 8px;
+    margin-top: 4px;
     gap: 8px;
 }
 
@@ -666,7 +708,7 @@ body.filters-visible {
     background-color: var(--vscode-badge-background);
     color: var(--vscode-badge-foreground);
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: 12px;
     font-size: 11px;
     font-weight: 500;
 }
@@ -836,20 +878,20 @@ body.filters-visible {
 
 .add-task-btn {
     width: 100%;
-    background: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
-    border: 1px dashed var(--vscode-panel-border);
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    border: none;
     border-radius: 6px;
-    padding: 12px;
-    font-size: 14px;
+    padding: 6px 8px;
+    font-size: 13px;
     cursor: pointer;
     transition: all 0.2s ease;
     margin-top: 8px;
+    text-align: left;
 }
 
 .add-task-btn:hover {
-    background: var(--vscode-button-secondaryHoverBackground);
-    border-color: var(--vscode-focusBorder);
+    color: var(--vscode-foreground);
 }
 
 .add-column-btn {
@@ -1442,10 +1484,10 @@ body.filters-visible {
 
 /* Mini progress bar under card header */
 .task-progress-bar {
-    height: 3px;
+    height: 2px;
     background-color: var(--vscode-input-border);
     border-radius: 2px;
-    margin-top: 8px;
+    margin-top: 4px;
     overflow: hidden;
 }
 

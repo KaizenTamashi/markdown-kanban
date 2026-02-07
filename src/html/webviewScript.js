@@ -111,6 +111,18 @@ function getStepsProgress (steps) {
   return { completed, total: steps.length }
 }
 
+// Column status dot color mapping (GitHub Projects V2 style)
+function getColumnDotColor(title) {
+  const t = title.toLowerCase()
+  if (t.includes('backlog')) return 'dot-gray'
+  if (t.includes('todo')) return 'dot-blue'
+  if (t.includes('progress')) return 'dot-yellow'
+  if (t.includes('blocked')) return 'dot-red'
+  if (t.includes('review')) return 'dot-purple'
+  if (t.includes('done')) return 'dot-green'
+  return 'dot-default'
+}
+
 // Render Kanban board based on filter conditions and sorting settings
 // Column tab slider — compact navigation
 let activeTabIndex = 0
@@ -127,7 +139,8 @@ function renderColumnTabs(columns) {
     const tab = document.createElement('span')
     tab.className = 'column-tab' + (i === activeTabIndex ? ' active' : '')
     const taskCount = col.tasks ? col.tasks.length : 0
-    tab.innerHTML = `${col.title}<span class="column-tab-count">${taskCount}</span>`
+    const dotColor = getColumnDotColor(col.title)
+    tab.innerHTML = `<span class="column-tab-dot column-status-dot ${dotColor}"></span>${col.title}<span class="column-tab-count">${taskCount}</span>`
     tab.addEventListener('click', () => {
       activeTabIndex = i
       // Scroll column into view
@@ -249,13 +262,15 @@ function createColumnElement (column) {
     columnDiv.classList.add('collapsed')
   }
 
+  const columnDotColor = getColumnDotColor(column.title)
   columnDiv.innerHTML = `
         <div class="column-header" draggable="true">
             <div class="column-title-section">
+                <span class="column-status-dot ${columnDotColor}"></span>
                 <h3 class="column-title">${column.title}${isArchived ? ' [Archived]' : ''}</h3>
+                <span class="task-count">${sortedTasks.length}</span>
             </div>
             <div class="column-controls-menu">
-                <span class="task-count">${sortedTasks.length}</span>
                 <button class="archive-toggle-btn" onclick="toggleColumnArchive('${column.id}')" 
                         title="${isArchived ? 'Unarchive' : 'Archive'}">
                     ${isArchived ? '📂' : '📁'}
@@ -266,7 +281,7 @@ function createColumnElement (column) {
             ${sortedTasks.map(task => createTaskElement(task, column.id)).join('')}
         </div>
         <button class="add-task-btn" onclick="openTaskModal('${column.id}')">
-            + Add Task
+            + Add item
         </button>
     `
 
@@ -286,13 +301,18 @@ function createTaskElement (task, columnId) {
 
   const taskDisplayId = getTaskDisplayId(task)
 
+  const issueTag = task.tags?.find(t => /^#\d+$/.test(t))
+
   return `
         <div class="task-item"
              data-task-id="${task.id}"
              data-column-id="${columnId}">
             <div class="task-header">
                 <div class="task-drag-handle" title="Drag to move task">⋮⋮</div>
-                <div class="task-title">${taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}">${taskDisplayId}</span>` : ''}${task.title}</div>
+                <div class="task-header-content">
+                    ${issueTag ? `<div class="task-repo-label"><span class="task-repo-dot"></span>${issueTag}</div>` : ''}
+                    <div class="task-title">${taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}">${taskDisplayId}</span>` : ''}${task.title}</div>
+                </div>
                 <div class="task-meta">
                     ${headerProgress.total > 0
                       ? `<div class="task-steps-progress task-ac-progress${headerProgress.completed === headerProgress.total ? ' progress-complete' : ''}" title="${headerProgressLabel}: ${headerProgress.completed}/${headerProgress.total}">${headerProgress.completed}/${headerProgress.total}</div>`
