@@ -7,18 +7,12 @@ body {
     color: var(--vscode-foreground);
     background-color: var(--vscode-editor-background);
     margin: 0;
-    padding: 20px;
+    padding: 8px 12px;
     overflow-x: hidden;
 }
 
 #kanban-container {
     overflow-x: auto;
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE/Edge */
-}
-
-#kanban-container::-webkit-scrollbar {
-    display: none; /* Chrome/Safari */
 }
 
 /* Column tab slider (compact, at top) */
@@ -26,11 +20,11 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 0;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
     background: transparent;
     border: 1px solid var(--vscode-panel-border);
-    border-radius: 6px;
-    padding: 2px;
+    border-radius: 4px;
+    padding: 1px;
     overflow: hidden;
     z-index: 100;
 }
@@ -38,15 +32,18 @@ body {
 .column-tab {
     position: relative;
     z-index: 1;
-    padding: 4px 10px;
-    font-size: 11px;
+    padding: 2px 8px;
+    font-size: 10px;
     font-weight: 500;
     color: var(--vscode-descriptionForeground);
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 3px;
     white-space: nowrap;
     transition: color 0.2s ease;
     user-select: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
 }
 
 .column-tab:hover {
@@ -70,17 +67,17 @@ body {
 }
 
 .column-tab-count {
-    font-size: 10px;
+    font-size: 9px;
     opacity: 0.6;
-    margin-left: 3px;
+    margin-left: 2px;
 }
 
 .column-tab-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
+    display: none;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    margin-right: 4px;
+    margin-right: 3px;
     vertical-align: middle;
 }
 
@@ -184,25 +181,27 @@ body.filters-visible {
 
 .board-controls {
     display: flex;
-    flex-direction: row;
-    gap: 12px;
-    align-items: center;
-    margin-bottom: 20px;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+    margin-bottom: 0;
+    min-width: 120px;
+    padding-top: 24px;
 }
 
 .kanban-board {
     display: flex;
-    gap: 24px;
-    min-height: calc(100vh - 150px);
-    padding-bottom: 20px;
+    gap: 8px;
+    min-height: calc(100vh - 100px);
+    padding-bottom: 12px;
 }
 
 .kanban-column {
     background-color: transparent;
     border-radius: 0;
-    padding: 0 8px;
-    min-width: 300px;
-    max-width: 350px;
+    padding: 0;
+    min-width: 240px;
+    max-width: 280px;
     flex-shrink: 0;
     border: none;
     position: relative;
@@ -220,16 +219,19 @@ body.filters-visible {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--vscode-panel-border);
+    margin-bottom: 6px;
+    padding-bottom: 0;
+    border-bottom: none;
     cursor: move;
 }
 
 .column-title {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--vscode-foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
 }
 
 .column-controls-menu {
@@ -241,12 +243,16 @@ body.filters-visible {
 .column-title-section {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
 }
 
 .column-status-dot {
-    width: 14px;
-    height: 14px;
+    display: none;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     flex-shrink: 0;
 }
@@ -259,16 +265,16 @@ body.filters-visible {
 .column-status-dot.dot-default { background-color: #8b949e; }
 
 .task-repo-label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--vscode-descriptionForeground);
-    margin-bottom: 2px;
+    margin-bottom: 1px;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
 }
 .task-repo-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: #3fb950;
 }
@@ -278,23 +284,23 @@ body.filters-visible {
 }
 
 .task-count {
-    background-color: var(--vscode-badge-background);
-    color: var(--vscode-badge-foreground);
+    background-color: transparent;
+    color: var(--vscode-descriptionForeground);
     border-radius: 10px;
-    padding: 2px 8px;
+    padding: 0;
     font-size: 12px;
     font-weight: 400;
-    line-height: 20px;
+    line-height: 18px;
 }
 
 .column-menu-btn {
     background: none;
     border: none;
-    color: var(--vscode-foreground);
+    color: var(--vscode-descriptionForeground);
     cursor: pointer;
-    padding: 4px;
+    padding: 2px;
     border-radius: 3px;
-    font-size: 14px;
+    font-size: 12px;
 }
 
 .column-menu-btn:hover {
@@ -304,12 +310,16 @@ body.filters-visible {
 .archive-toggle-btn {
     background: none;
     border: none;
-    color: var(--vscode-foreground);
+    color: var(--vscode-descriptionForeground);
     cursor: pointer;
-    padding: 4px;
+    padding: 2px;
     border-radius: 3px;
-    font-size: 14px;
-    opacity: 0.7;
+    font-size: 11px;
+    opacity: 0;
+}
+
+.kanban-column:hover .archive-toggle-btn {
+    opacity: 0.5;
 }
 
 .archive-toggle-btn:hover {
@@ -336,10 +346,12 @@ body.filters-visible {
 
 /* 统一归档列样式 */
 .unified-archive {
-    min-width: 250px;
-    max-width: 300px;
+    min-width: 200px;
+    max-width: 250px;
     background-color: var(--vscode-sideBar-background);
-    border: 1px solid var(--vscode-descriptionForeground);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 0 6px;
 }
 
 .unified-archive.collapsed {
@@ -508,19 +520,19 @@ body.filters-visible {
 }
 
 .tasks-container {
-    min-height: 100px;
-    max-height: calc(100vh - 280px);
+    min-height: 50px;
+    max-height: calc(100vh - 160px);
     overflow-y: auto;
 }
 
 .task-item {
     background-color: var(--vscode-sideBar-background);
     border: 1px solid var(--vscode-panel-border);
-    border-radius: 6px;
-    padding: 8px 12px;
-    margin-bottom: 6px;
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin-bottom: 4px;
     cursor: grab;
-    transition: all 0.2s ease;
+    transition: border-color 0.15s ease;
     position: relative;
 }
 
@@ -544,39 +556,17 @@ body.filters-visible {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 8px;
+    gap: 4px;
     margin-bottom: 0;
 }
 
 .task-drag-handle {
-    color: var(--vscode-descriptionForeground);
-    cursor: grab;
-    font-size: 14px;
-    padding: 4px 2px;
-    user-select: none;
-    opacity: 0;
-    transition: opacity 0.2s;
-    flex-shrink: 0;
-    line-height: 1;
-    order: -1;
-}
-
-.task-item:hover .task-drag-handle {
-    opacity: 0.5;
-}
-
-.task-drag-handle:hover {
-    opacity: 1;
-    color: var(--vscode-foreground);
-}
-
-.task-drag-handle:active {
-    cursor: grabbing;
+    display: none;
 }
 
 .task-title {
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 13px;
+    font-weight: 500;
     color: var(--vscode-foreground);
     flex: 1;
     line-height: 1.3;
@@ -586,13 +576,13 @@ body.filters-visible {
 .task-number {
     display: inline-block;
     color: var(--vscode-descriptionForeground);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
     font-family: var(--vscode-editor-font-family), monospace;
-    margin-right: 6px;
-    padding: 1px 7px;
+    margin-right: 4px;
+    padding: 0px 5px;
     border: 1px solid var(--vscode-panel-border);
-    border-radius: 10px;
+    border-radius: 8px;
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.15s ease;
@@ -620,8 +610,8 @@ body.filters-visible {
 }
 
 .task-priority {
-    width: 12px;
-    height: 12px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
 }
@@ -631,9 +621,9 @@ body.filters-visible {
 .priority-low { background-color: #44ff44; }
 
 .task-workload {
-    padding: 2px 6px;
+    padding: 1px 4px;
     border-radius: 3px;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
 }
 
@@ -658,8 +648,8 @@ body.filters-visible {
 }
 
 .task-deadline {
-    font-size: 11px;
-    padding: 2px 6px;
+    font-size: 10px;
+    padding: 1px 4px;
     border-radius: 3px;
     font-weight: 500;
 }
@@ -687,8 +677,8 @@ body.filters-visible {
 .task-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 4px;
+    gap: 3px;
+    margin-top: 3px;
 }
 
 .task-tags-row {
@@ -707,9 +697,9 @@ body.filters-visible {
 .task-tag {
     background-color: var(--vscode-badge-background);
     color: var(--vscode-badge-foreground);
-    padding: 2px 6px;
-    border-radius: 12px;
-    font-size: 11px;
+    padding: 1px 5px;
+    border-radius: 10px;
+    font-size: 10px;
     font-weight: 500;
 }
 
@@ -845,15 +835,7 @@ body.filters-visible {
 }
 
 .task-actions {
-    position: absolute;
-    top: 8px;
-    right: 8px;
     display: none;
-    gap: 4px;
-}
-
-.task-item:hover .task-actions {
-    display: flex;
 }
 
 .action-btn {
@@ -877,55 +859,60 @@ body.filters-visible {
 }
 
 .add-task-btn {
+    display: none;
     width: 100%;
     background: transparent;
     color: var(--vscode-descriptionForeground);
     border: none;
-    border-radius: 6px;
-    padding: 6px 8px;
-    font-size: 13px;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
     cursor: pointer;
-    transition: all 0.2s ease;
-    margin-top: 8px;
+    transition: color 0.15s ease;
+    margin-top: 4px;
     text-align: left;
+    opacity: 0.6;
 }
 
 .add-task-btn:hover {
     color: var(--vscode-foreground);
+    opacity: 1;
 }
 
 .add-column-btn {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border: none;
-    border-radius: 6px;
-    padding: 16px;
-    min-width: 200px;
-    font-size: 14px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    border: 1px dashed var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 8px 12px;
+    min-width: 120px;
+    font-size: 12px;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: color 0.15s ease;
     align-self: flex-start;
 }
 
 .add-column-btn:hover {
-    background: var(--vscode-button-hoverBackground);
+    color: var(--vscode-foreground);
+    border-color: var(--vscode-foreground);
 }
 
 .show-filters-btn {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border: none;
-    border-radius: 6px;
-    padding: 16px;
-    min-width: 200px;
-    font-size: 14px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    min-width: auto;
+    font-size: 11px;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: color 0.15s ease;
     align-self: flex-start;
 }
 
 .show-filters-btn:hover {
-    background: var(--vscode-button-hoverBackground);
+    color: var(--vscode-foreground);
+    border-color: var(--vscode-foreground);
 }
 
 /* Modal styles */
@@ -1324,11 +1311,11 @@ body.filters-visible {
 .task-steps-progress {
     background-color: var(--vscode-badge-background);
     color: var(--vscode-badge-foreground);
-    border-radius: 10px;
-    padding: 2px 8px;
-    font-size: 11px;
+    border-radius: 8px;
+    padding: 1px 5px;
+    font-size: 10px;
     font-weight: 600;
-    margin-right: 4px;
+    margin-right: 2px;
 }
 
 /* AC progress — blue tint */
@@ -1473,9 +1460,9 @@ body.filters-visible {
 /* Description preview on collapsed card */
 .task-desc-preview {
     color: var(--vscode-descriptionForeground);
-    font-size: 12px;
-    line-height: 1.4;
-    margin-top: 4px;
+    font-size: 11px;
+    line-height: 1.3;
+    margin-top: 2px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1487,7 +1474,7 @@ body.filters-visible {
     height: 2px;
     background-color: var(--vscode-input-border);
     border-radius: 2px;
-    margin-top: 4px;
+    margin-top: 3px;
     overflow: hidden;
 }
 
@@ -1559,9 +1546,9 @@ body.filters-visible {
 }
 
 .task-priority-badge {
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
     font-weight: 500;
     color: white;
 }
