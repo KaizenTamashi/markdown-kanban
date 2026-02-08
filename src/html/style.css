@@ -197,14 +197,16 @@ body.filters-visible {
 }
 
 .kanban-column {
-    background-color: transparent;
-    border-radius: 0;
-    padding: 0;
+    display: flex;
+    flex-direction: column;
     min-width: 240px;
     max-width: 280px;
     flex-shrink: 0;
-    border: none;
     position: relative;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    padding: 8px;
+    background-color: var(--vscode-sideBar-background);
 }
 
 .kanban-column.hidden {
@@ -520,6 +522,7 @@ body.filters-visible {
 }
 
 .tasks-container {
+    flex: 1;
     min-height: 50px;
     max-height: calc(100vh - 160px);
     overflow-y: auto;
@@ -1135,6 +1138,7 @@ body.filters-visible {
 }
 
 .kanban-column.drag-over {
+    border-color: var(--vscode-focusBorder);
     background-color: var(--vscode-list-hoverBackground);
 }
 

@@ -710,18 +710,18 @@ function setupTaskDragAndDrop() {
     const columnId = columnElement.dataset.columnId
     const tasksContainer = columnElement.querySelector('.tasks-container')
 
-    tasksContainer.addEventListener('dragover', e => {
+    columnElement.addEventListener('dragover', e => {
       e.preventDefault()
       columnElement.classList.add('drag-over')
-      
+
       const draggingElement = document.querySelector('.task-item.dragging')
       if (draggingElement) {
         const afterElement = getDragAfterTaskElement(tasksContainer, e.clientY)
-        
+
         tasksContainer.querySelectorAll('.task-item').forEach(task => {
           task.classList.remove('drag-insert-before', 'drag-insert-after')
         })
-        
+
         if (afterElement == null) {
           const lastTask = tasksContainer.querySelector('.task-item:last-child')
           if (lastTask && lastTask !== draggingElement) {
@@ -733,7 +733,7 @@ function setupTaskDragAndDrop() {
       }
     })
 
-    tasksContainer.addEventListener('dragleave', e => {
+    columnElement.addEventListener('dragleave', e => {
       if (!columnElement.contains(e.relatedTarget)) {
         columnElement.classList.remove('drag-over')
         tasksContainer.querySelectorAll('.task-item').forEach(task => {
@@ -742,10 +742,10 @@ function setupTaskDragAndDrop() {
       }
     })
 
-    tasksContainer.addEventListener('drop', e => {
+    columnElement.addEventListener('drop', e => {
       e.preventDefault()
       columnElement.classList.remove('drag-over')
-      
+
       tasksContainer.querySelectorAll('.task-item').forEach(task => {
         task.classList.remove('drag-insert-before', 'drag-insert-after')
       })
