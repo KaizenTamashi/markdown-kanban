@@ -58,16 +58,22 @@ function getTaskDisplayId(task) {
 }
 
 // Copy task ID to clipboard with visual feedback
-function copyTaskId(event, taskId) {
+function copyTaskId(event, badge, taskId) {
   event.stopPropagation()
   navigator.clipboard.writeText(taskId)
-  const badge = event.currentTarget
-  const original = badge.textContent
-  badge.textContent = 'Copied!'
+
+  // Brief green flash on the badge
   badge.classList.add('copied')
+  setTimeout(() => badge.classList.remove('copied'), 1200)
+
+  // Floating tooltip above badge
+  const tooltip = document.createElement('span')
+  tooltip.className = 'copy-tooltip'
+  tooltip.textContent = '\u2713 Copied!'
+  badge.appendChild(tooltip)
+
   setTimeout(() => {
-    badge.textContent = original
-    badge.classList.remove('copied')
+    tooltip.remove()
   }, 1200)
 }
 
@@ -311,7 +317,7 @@ function createTaskElement (task, columnId) {
                 <div class="task-drag-handle" title="Drag to move task">⋮⋮</div>
                 <div class="task-header-content">
                     ${issueTag ? `<div class="task-repo-label"><span class="task-repo-dot"></span>${issueTag}</div>` : ''}
-                    <div class="task-title">${taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}">${taskDisplayId}</span>` : ''}${task.title}</div>
+                    <div class="task-title">${taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}" title="Click to copy">${taskDisplayId}</span>` : ''}${task.title}</div>
                 </div>
                 <div class="task-meta">
                     ${headerProgress.total > 0
@@ -1172,7 +1178,7 @@ function openTaskDetailModal (taskId, columnId) {
   const taskDisplayId = getTaskDisplayId(task)
 
   const modal = document.getElementById('task-detail-modal')
-  document.getElementById('detail-modal-title').innerHTML = (taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}">${taskDisplayId}</span> ` : '') + task.title
+  document.getElementById('detail-modal-title').innerHTML = (taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}" title="Click to copy">${taskDisplayId}</span> ` : '') + task.title
   document.getElementById('task-detail-body').innerHTML = renderTaskDetailContent(task, columnId)
 
   document.getElementById('detail-edit-btn').onclick = () => {
@@ -1326,7 +1332,7 @@ function refreshTaskDetailModal () {
   const taskDisplayId = getTaskDisplayId(task)
 
   const modal = document.getElementById('task-detail-modal')
-  document.getElementById('detail-modal-title').innerHTML = (taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}">${taskDisplayId}</span> ` : '') + task.title
+  document.getElementById('detail-modal-title').innerHTML = (taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}" title="Click to copy">${taskDisplayId}</span> ` : '') + task.title
   document.getElementById('task-detail-body').innerHTML = renderTaskDetailContent(task, columnId)
 
   document.getElementById('detail-edit-btn').onclick = () => {
@@ -2104,7 +2110,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', e => {
     const badge = e.target.closest('[data-copy-id]')
     if (badge) {
-      copyTaskId(e, badge.dataset.copyId)
+      copyTaskId(e, badge, badge.dataset.copyId)
     }
   })
 
