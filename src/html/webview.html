@@ -44,7 +44,7 @@
 
     <!-- Task edit modal -->
     <div id="task-modal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content task-detail-modal-content">
             <div class="modal-header">
                 <h3 class="modal-title" id="modal-title">Add Task</h3>
                 <button class="close-btn" onclick="closeTaskModal()">&times;</button>
@@ -111,6 +111,33 @@
                     </div>
                 </div>
 
+                <div class="form-group">
+                    <label class="form-label">Acceptance Criteria</label>
+                    <div class="steps-container" id="ac-container">
+                        <div class="steps-list" id="ac-list"></div>
+                        <div class="steps-input-row">
+                            <input type="text" class="steps-input" id="ac-input" placeholder="Enter criterion and press Enter">
+                            <button type="button" class="btn btn-secondary add-step-btn" onclick="addAcItem()">Add</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Verify Steps</label>
+                    <div class="steps-container" id="verify-container">
+                        <div class="steps-list" id="verify-list"></div>
+                        <div class="steps-input-row">
+                            <input type="text" class="steps-input" id="verify-input" placeholder="Enter verify step and press Enter">
+                            <button type="button" class="btn btn-secondary add-step-btn" onclick="addVerifyItem()">Add</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="task-files">Files</label>
+                    <input type="text" id="task-files" class="form-input" placeholder="e.g. [File.tsx](src/path/File.tsx)">
+                </div>
+
                 <div class="modal-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeTaskModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save</button>
@@ -158,6 +185,7 @@
             <div class="modal-header">
                 <h3 class="modal-title" id="detail-modal-title">Task Details</h3>
                 <div class="detail-modal-header-actions">
+                    <button type="button" class="btn btn-secondary detail-source-btn" id="detail-source-btn" title="View in source">View</button>
                     <button type="button" class="btn btn-secondary" id="detail-delete-btn">Delete</button>
                     <button type="button" class="btn btn-primary" id="detail-edit-btn">Edit</button>
                     <button class="close-btn" onclick="closeTaskDetailModal()">&times;</button>

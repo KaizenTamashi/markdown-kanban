@@ -136,6 +136,11 @@ export class KanbanWebviewPanel {
             case 'requestBoard':
                 this._sendBoardData();
                 break;
+            case 'goToSource':
+                if (this._document && message.taskId) {
+                    this._goToTaskInSource(message.taskId);
+                }
+                break;
             case 'openFile':
                 if (this._document && message.path) {
                     const docDir = path.dirname(this._document.uri.fsPath);
@@ -282,7 +287,10 @@ export class KanbanWebviewPanel {
                 workload: taskData.workload,
                 dueDate: taskData.dueDate,
                 defaultExpanded: taskData.defaultExpanded,
-                steps: taskData.steps || []
+                steps: taskData.steps || [],
+                ac: taskData.ac || undefined,
+                verify: taskData.verify || undefined,
+                files: taskData.files || undefined
             };
 
             column.tasks.push(newTask);
@@ -306,16 +314,18 @@ export class KanbanWebviewPanel {
             const result = this.findTask(columnId, taskId);
             if (!result) return;
 
-            Object.assign(result.task, {
-                title: taskData.title,
-                description: taskData.description,
-                tags: taskData.tags || [],
-                priority: taskData.priority,
-                workload: taskData.workload,
-                dueDate: taskData.dueDate,
-                defaultExpanded: taskData.defaultExpanded,
-                steps: taskData.steps || []
-            });
+            // Only update fields that the form actually sends
+            result.task.title = taskData.title;
+            result.task.description = taskData.description;
+            result.task.tags = taskData.tags || [];
+            result.task.priority = taskData.priority;
+            result.task.workload = taskData.workload;
+            result.task.dueDate = taskData.dueDate;
+            result.task.defaultExpanded = taskData.defaultExpanded;
+            result.task.steps = taskData.steps || [];
+            result.task.ac = taskData.ac && taskData.ac.length > 0 ? taskData.ac : undefined;
+            result.task.verify = taskData.verify && taskData.verify.length > 0 ? taskData.verify : undefined;
+            result.task.files = taskData.files || undefined;
         });
     }
 
@@ -396,6 +406,38 @@ export class KanbanWebviewPanel {
 
             column.archived = archived;
         });
+    }
+
+    private async _goToTaskInSource(taskId: string) {
+        if (!this._document) return;
+
+        const text = this._document.getText();
+        const lines = text.split('\n');
+        let targetLine = -1;
+
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes(`### ${taskId}`)) {
+                targetLine = i;
+                break;
+            }
+        }
+
+        if (targetLine === -1) return;
+
+        const editor = await vscode.window.showTextDocument(this._document, {
+            viewColumn: vscode.ViewColumn.One,
+            preserveFocus: false
+        });
+
+        const lineText = lines[targetLine];
+        const idIndex = lineText.indexOf(taskId);
+        const startPos = new vscode.Position(targetLine, idIndex >= 0 ? idIndex : 0);
+        const endPos = new vscode.Position(targetLine, idIndex >= 0 ? idIndex + taskId.length : 0);
+        editor.selection = new vscode.Selection(startPos, endPos);
+        editor.revealRange(
+            new vscode.Range(startPos, endPos),
+            vscode.TextEditorRevealType.InCenter
+        );
     }
 
     private _getHtmlForWebview() {

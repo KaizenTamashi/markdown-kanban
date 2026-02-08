@@ -289,7 +289,12 @@ function createColumnElement (column) {
         <div class="tasks-container" id="tasks-${column.id}">
             ${sortedTasks.map(task => createTaskElement(task, column.id)).join('')}
         </div>
-        <button class="add-task-btn" onclick="openTaskModal('${column.id}')">
+        <div class="inline-add-container" id="inline-add-${column.id}" style="display:none;">
+            <input type="text" class="inline-add-input" placeholder="Task title..."
+                   onkeydown="handleInlineAddKey(event, '${column.id}')"
+                   onblur="cancelInlineAdd('${column.id}')">
+        </div>
+        <button class="add-task-btn" onclick="startInlineAdd('${column.id}')">
             + Add item
         </button>
     `
@@ -323,9 +328,7 @@ function createTaskElement (task, columnId) {
                     <div class="task-title">${taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}" title="Click to copy">${taskDisplayId}</span>` : ''}${task.title}</div>
                 </div>
                 <div class="task-meta">
-                    ${headerProgress.total > 0
-                      ? `<div class="task-steps-progress task-ac-progress${headerProgress.completed === headerProgress.total ? ' progress-complete' : ''}" title="${headerProgressLabel}: ${headerProgress.completed}/${headerProgress.total}">${headerProgress.completed}/${headerProgress.total}</div>`
-                      : ''}
+                    <button class="task-view-btn" onclick="event.stopPropagation(); goToSource('${task.id}')" title="View in source">View</button>
                 </div>
             </div>
 
@@ -1119,14 +1122,18 @@ function populateTaskForm(columnId, taskId) {
 
   clearAndPopulateTags(task.tags)
   clearAndPopulateSteps(task.steps)
-
+  clearAndPopulateAc(task.ac)
+  clearAndPopulateVerify(task.verify)
+  document.getElementById('task-files').value = task.files || ''
 }
 
 function clearTaskForm(form) {
   form.reset()
   clearAndPopulateTags([])
   clearAndPopulateSteps([])
-
+  clearAndPopulateAc([])
+  clearAndPopulateVerify([])
+  document.getElementById('task-files').value = ''
 }
 
 function clearAndPopulateTags(tags) {
@@ -1183,6 +1190,11 @@ function openTaskDetailModal (taskId, columnId) {
   const modal = document.getElementById('task-detail-modal')
   document.getElementById('detail-modal-title').innerHTML = (taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}" title="Click to copy">${taskDisplayId}</span> ` : '') + task.title
   document.getElementById('task-detail-body').innerHTML = renderTaskDetailContent(task, columnId)
+
+  document.getElementById('detail-source-btn').onclick = () => {
+    closeTaskDetailModal()
+    goToSource(taskId)
+  }
 
   document.getElementById('detail-edit-btn').onclick = () => {
     detailReturnTask = taskId
@@ -1337,6 +1349,11 @@ function refreshTaskDetailModal () {
   const modal = document.getElementById('task-detail-modal')
   document.getElementById('detail-modal-title').innerHTML = (taskDisplayId ? `<span class="task-number" data-copy-id="${taskDisplayId}" title="Click to copy">${taskDisplayId}</span> ` : '') + task.title
   document.getElementById('task-detail-body').innerHTML = renderTaskDetailContent(task, columnId)
+
+  document.getElementById('detail-source-btn').onclick = () => {
+    closeTaskDetailModal()
+    goToSource(task.id)
+  }
 
   document.getElementById('detail-edit-btn').onclick = () => {
     detailReturnTask = task.id
@@ -1712,6 +1729,114 @@ function getFormSteps () {
   })
 }
 
+// AC handling functions
+function addAcItem () {
+  const acInput = document.getElementById('ac-input')
+  const text = acInput.value.trim()
+  if (text) {
+    addChecklistItemToContainer('ac-list', text, false)
+    acInput.value = ''
+  }
+}
+
+// Verify handling functions
+function addVerifyItem () {
+  const verifyInput = document.getElementById('verify-input')
+  const text = verifyInput.value.trim()
+  if (text) {
+    addChecklistItemToContainer('verify-list', text, false)
+    verifyInput.value = ''
+  }
+}
+
+function addChecklistItemToContainer (listId, text, completed) {
+  const list = document.getElementById(listId)
+  const item = document.createElement('div')
+  item.className = 'step-item'
+  item.innerHTML = `
+    <input type="checkbox" ${completed ? 'checked' : ''} onchange="updateStepStatus(this)">
+    <span class="step-text ${completed ? 'completed' : ''}">${text}</span>
+    <button type="button" class="step-remove" onclick="removeStep(this)">×</button>
+  `
+  item.addEventListener('click', e => e.stopPropagation())
+  item.addEventListener('mousedown', e => e.stopPropagation())
+  list.appendChild(item)
+}
+
+function clearAndPopulateAc (items) {
+  const list = document.getElementById('ac-list')
+  list.innerHTML = ''
+  if (items) {
+    items.forEach(item => addChecklistItemToContainer('ac-list', item.text, item.completed))
+  }
+}
+
+function clearAndPopulateVerify (items) {
+  const list = document.getElementById('verify-list')
+  list.innerHTML = ''
+  if (items) {
+    items.forEach(item => addChecklistItemToContainer('verify-list', item.text, item.completed))
+  }
+}
+
+function getFormAc () {
+  const list = document.getElementById('ac-list')
+  return Array.from(list.querySelectorAll('.step-item')).map(item => {
+    const checkbox = item.querySelector('input[type="checkbox"]')
+    const text = item.querySelector('.step-text').textContent.trim()
+    return { text, completed: checkbox.checked }
+  })
+}
+
+function getFormVerify () {
+  const list = document.getElementById('verify-list')
+  return Array.from(list.querySelectorAll('.step-item')).map(item => {
+    const checkbox = item.querySelector('input[type="checkbox"]')
+    const text = item.querySelector('.step-text').textContent.trim()
+    return { text, completed: checkbox.checked }
+  })
+}
+
+// Go to source in markdown file
+function goToSource (taskId) {
+  vscode.postMessage({ type: 'goToSource', taskId: taskId })
+}
+
+// Inline quick-add (Linear-style)
+function startInlineAdd (columnId) {
+  const container = document.getElementById('inline-add-' + columnId)
+  if (!container) return
+  container.style.display = 'block'
+  const input = container.querySelector('.inline-add-input')
+  input.value = ''
+  input.focus()
+}
+
+function handleInlineAddKey (e, columnId) {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    const title = e.target.value.trim()
+    if (title) {
+      vscode.postMessage({
+        type: 'addTask',
+        columnId: columnId,
+        taskData: { title: title, description: '', tags: [], steps: [], ac: [], verify: [], files: '' }
+      })
+      e.target.value = ''
+      // Keep input open for rapid entry
+    }
+  } else if (e.key === 'Escape') {
+    cancelInlineAdd(columnId)
+  }
+}
+
+function cancelInlineAdd (columnId) {
+  const container = document.getElementById('inline-add-' + columnId)
+  if (container) {
+    container.style.display = 'none'
+  }
+}
+
 // Setup step drag and drop for individual step items
 function setupStepDragAndDrop(stepElement) {
   let longPressTimer = null
@@ -1977,6 +2102,22 @@ function setupStepsInput () {
       addStep()
     }
   })
+
+  const acInput = document.getElementById('ac-input')
+  acInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      addAcItem()
+    }
+  })
+
+  const verifyInput = document.getElementById('verify-input')
+  verifyInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      addVerifyItem()
+    }
+  })
 }
 
 // Setup description textarea: image paste handling
@@ -2133,7 +2274,10 @@ document.getElementById('task-form').addEventListener('submit', e => {
     dueDate: document.getElementById('task-due-date').value || undefined,
     defaultExpanded: document.getElementById('task-default-expanded').checked,
     tags: getFormTags(),
-    steps: getFormSteps()
+    steps: getFormSteps(),
+    ac: getFormAc(),
+    verify: getFormVerify(),
+    files: document.getElementById('task-files').value.trim()
   }
 
   if (!taskData.title) {

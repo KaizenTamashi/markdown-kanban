@@ -129,7 +129,7 @@ export class MarkdownKanbanParser {
           }
 
           // New format: extract TSK_N prefix from title
-          const tskMatch = taskTitle.match(/^(TSK[_-]\d+)\s+(.*)$/);
+          const tskMatch = taskTitle.match(/^(TSK[_-]\d+):?\s+(.*)$/);
 
           currentTask = {
             id: tskMatch ? tskMatch[1] : this.generateId(),
@@ -406,7 +406,7 @@ export class MarkdownKanbanParser {
 
       for (const task of column.tasks) {
         // New format: TSK_N in title
-        const idPrefix = task.id && task.id.match(/^TSK[_-]\d+$/) ? `${task.id} ` : '';
+        const idPrefix = task.id && task.id.match(/^TSK[_-]\d+$/) ? `${task.id}: ` : '';
 
         if (taskHeaderFormat === 'title') {
           markdown += `### ${idPrefix}${task.title}\n`;
