@@ -1721,3 +1721,17 @@ body.filters-visible {
     padding: 6px 10px !important;
     font-size: 12px;
 }
+
+/* Delete button — red */
+.action-btn.delete,
+#detail-delete-btn {
+    background: var(--vscode-inputValidation-errorBackground, #5a1d1d) !important;
+    color: var(--vscode-errorForeground, #f48771) !important;
+    border-color: var(--vscode-inputValidation-errorBorder, #be1100) !important;
+}
+
+.action-btn.delete:hover,
+#detail-delete-btn:hover {
+    background: var(--vscode-inputValidation-errorBorder, #be1100) !important;
+    color: #fff !important;
+}
