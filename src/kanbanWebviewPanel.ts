@@ -399,18 +399,27 @@ export class KanbanWebviewPanel {
     }
 
     private _getHtmlForWebview() {
-        const filePath = vscode.Uri.file(path.join(this._context.extensionPath, 'src', 'html', 'webview.html'));
+        const htmlDir = path.join(this._context.extensionPath, 'src', 'html');
+        const filePath = vscode.Uri.file(path.join(htmlDir, 'webview.html'));
         let html = fs.readFileSync(filePath.fsPath, 'utf8');
 
-        const baseWebviewUri = this._panel.webview.asWebviewUri(
-            vscode.Uri.file(path.join(this._context.extensionPath, 'src', 'html'))
+        // Generate absolute webview URIs for CSS and JS (survives serialize/restore)
+        const cssUri = this._panel.webview.asWebviewUri(
+            vscode.Uri.file(path.join(htmlDir, 'style.css'))
+        );
+        const scriptUri = this._panel.webview.asWebviewUri(
+            vscode.Uri.file(path.join(htmlDir, 'webviewScript.js'))
         );
 
         // CSP: allow images from webview resources, inline styles/scripts for existing handlers
         const cspSource = this._panel.webview.cspSource;
         const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'unsafe-inline'; font-src ${cspSource};">`;
 
-        html = html.replace(/<head>/, `<head>${csp}<base href="${baseWebviewUri.toString()}/">`);
+        html = html.replace(/<head>/, `<head>${csp}`);
+
+        // Replace relative paths with absolute webview URIs
+        html = html.replace('./style.css', cssUri.toString());
+        html = html.replace('./webviewScript.js', scriptUri.toString());
 
         return html;
     }
