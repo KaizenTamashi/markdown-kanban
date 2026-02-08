@@ -262,8 +262,8 @@ export class KanbanWebviewPanel {
     }
 
     private _getNextTaskId(): string {
-        if (!this._board) return `TSK-1`;
-        const id = `TSK-${this._board.nextId}`;
+        if (!this._board) return `TSK_1`;
+        const id = `TSK_${this._board.nextId}`;
         this._board.nextId++;
         return id;
     }

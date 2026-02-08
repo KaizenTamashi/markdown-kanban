@@ -49,9 +49,9 @@ window.addEventListener('message', event => {
   }
 })
 
-// Get display ID from task (TSK-N format stored in task.id)
+// Get display ID from task (TSK_N format stored in task.id)
 function getTaskDisplayId(task) {
-  if (task.id && task.id.match(/^TSK-\d+$/)) {
+  if (task.id && task.id.match(/^TSK[_-]\d+$/)) {
     return task.id
   }
   return null
@@ -66,11 +66,14 @@ function copyTaskId(event, badge, taskId) {
   badge.classList.add('copied')
   setTimeout(() => badge.classList.remove('copied'), 1200)
 
-  // Floating tooltip above badge
+  // Floating tooltip above badge (fixed position to escape overflow:hidden)
   const tooltip = document.createElement('span')
   tooltip.className = 'copy-tooltip'
   tooltip.textContent = '\u2713 Copied!'
-  badge.appendChild(tooltip)
+  document.body.appendChild(tooltip)
+  const rect = badge.getBoundingClientRect()
+  tooltip.style.left = `${rect.left + rect.width / 2 - tooltip.offsetWidth / 2}px`
+  tooltip.style.top = `${rect.top - tooltip.offsetHeight - 4}px`
 
   setTimeout(() => {
     tooltip.remove()

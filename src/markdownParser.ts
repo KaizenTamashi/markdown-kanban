@@ -50,10 +50,10 @@ export class MarkdownKanbanParser {
 
     let currentColumn: KanbanColumn | null = null;
     let currentTask: KanbanTask | null = null;
-    let inTaskProperties = false;
-    let inTaskDescription = false;
+    let inTaskBody = false;
     let inCodeBlock = false;
     let activeListKey: ChecklistKey | null = null;
+    let collectingDescription = false;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -64,44 +64,28 @@ export class MarkdownKanbanParser {
         continue;
       }
 
-      // 检查代码块标记
+      // Track code blocks
       if (trimmedLine.startsWith('```')) {
-        if (inTaskDescription) {
-          if (trimmedLine === '```md' || trimmedLine === '```') {
-            inCodeBlock = !inCodeBlock;
-            continue;
-          }
-        }
+        inCodeBlock = !inCodeBlock;
+        continue;
       }
-
-      // 如果在代码块内部，处理为描述内容
-      if (inCodeBlock && inTaskDescription && currentTask) {
-        if (trimmedLine === '```') {
-          inCodeBlock = false;
-          inTaskDescription = false;
-          continue;
-        } else {
-          const cleanLine = line.replace(/^\s{4,}/, '');
-          currentTask.description = currentTask.description
-            ? currentTask.description + '\n' + cleanLine
-            : cleanLine;
-        }
+      if (inCodeBlock) {
         continue;
       }
 
-      // 解析看板标题
-      if (!inCodeBlock && trimmedLine.startsWith('# ') && !board.title) {
+      // Parse board title
+      if (trimmedLine.startsWith('# ') && !board.title) {
         board.title = trimmedLine.substring(2).trim();
         this.finalizeCurrentTask(currentTask, currentColumn);
         currentTask = null;
-        inTaskProperties = false;
-        inTaskDescription = false;
+        inTaskBody = false;
         activeListKey = null;
+        collectingDescription = false;
         continue;
       }
 
-      // 解析列标题
-      if (!inCodeBlock && trimmedLine.startsWith('## ')) {
+      // Parse column title
+      if (trimmedLine.startsWith('## ')) {
         this.finalizeCurrentTask(currentTask, currentColumn);
         currentTask = null;
         if (currentColumn) {
@@ -111,7 +95,6 @@ export class MarkdownKanbanParser {
         let columnTitle = trimmedLine.substring(3).trim();
         let isArchived = false;
 
-        // 检查是否包含 [Archived] 标记
         if (columnTitle.endsWith('[Archived]')) {
           isArchived = true;
           columnTitle = columnTitle.replace(/\s*\[Archived\]$/, '').trim();
@@ -123,14 +106,14 @@ export class MarkdownKanbanParser {
           tasks: [],
           archived: isArchived
         };
-        inTaskProperties = false;
-        inTaskDescription = false;
+        inTaskBody = false;
         activeListKey = null;
+        collectingDescription = false;
         continue;
       }
 
-      // 解析任务标题
-      if (!inCodeBlock && this.isTaskTitle(line, trimmedLine)) {
+      // Parse task title (### format or - format)
+      if (this.isTaskTitle(line, trimmedLine)) {
         this.finalizeCurrentTask(currentTask, currentColumn);
 
         if (currentColumn) {
@@ -140,29 +123,99 @@ export class MarkdownKanbanParser {
             taskTitle = trimmedLine.substring(4).trim();
           } else {
             taskTitle = trimmedLine.substring(2).trim();
-            // 移除复选框标记
             if (taskTitle.startsWith('[ ] ') || taskTitle.startsWith('[x] ')) {
               taskTitle = taskTitle.substring(4).trim();
             }
           }
 
+          // New format: extract TSK_N prefix from title
+          const tskMatch = taskTitle.match(/^(TSK[_-]\d+)\s+(.*)$/);
+
           currentTask = {
-            id: this.generateId(),
-            title: taskTitle,
+            id: tskMatch ? tskMatch[1] : this.generateId(),
+            title: tskMatch ? tskMatch[2] : taskTitle,
             description: ''
           };
-          inTaskProperties = true;
-          inTaskDescription = false;
+          inTaskBody = true;
           activeListKey = null;
+          collectingDescription = false;
         }
         continue;
       }
 
-      // 解析任务属性
-      if (!inCodeBlock && currentTask && inTaskProperties) {
+      // Inside a task body — parse properties, metadata, sections
+      if (currentTask && inTaskBody) {
+        // Empty line — reset description collection but stay in task
+        if (trimmedLine === '') {
+          // If we were collecting description and hit empty line before a section,
+          // just continue (allow blank lines in description area)
+          continue;
+        }
+
+        // === NEW FORMAT: Blockquote metadata line ===
+        // > tags | priority
+        if (trimmedLine.startsWith('> ')) {
+          const metaContent = trimmedLine.substring(2).trim();
+          const parts = metaContent.split('|').map(p => p.trim());
+          const tagsPart = parts[0];
+          const priorityPart = parts.length > 1 ? parts[1] : null;
+
+          if (tagsPart) {
+            currentTask.tags = tagsPart.split(',').map(t => t.trim()).filter(t => t !== '');
+          }
+          if (priorityPart && ['low', 'medium', 'high'].includes(priorityPart.toLowerCase())) {
+            currentTask.priority = priorityPart.toLowerCase() as 'low' | 'medium' | 'high';
+          }
+          collectingDescription = true;
+          activeListKey = null;
+          continue;
+        }
+
+        // === NEW FORMAT: Bold section headers ===
+        // **AC:** / **Verify:** / **Steps:** / **Files:**
+        const boldSectionMatch = trimmedLine.match(/^\*\*(AC|Verify|Steps|Files):\*\*\s*(.*)$/i);
+        if (boldSectionMatch) {
+          collectingDescription = false;
+          const sectionName = boldSectionMatch[1].toLowerCase();
+          const inlineValue = boldSectionMatch[2].trim();
+
+          if (sectionName === 'files') {
+            if (inlineValue) {
+              currentTask.files = inlineValue;
+            }
+            activeListKey = null;
+          } else if (sectionName === 'ac') {
+            currentTask.ac = currentTask.ac || [];
+            activeListKey = 'ac';
+          } else if (sectionName === 'verify') {
+            currentTask.verify = currentTask.verify || [];
+            activeListKey = 'verify';
+          } else if (sectionName === 'steps') {
+            currentTask.steps = currentTask.steps || [];
+            activeListKey = 'steps';
+          }
+          continue;
+        }
+
+        // === NEW FORMAT: Checklist items (normal indentation) ===
+        // - [ ] item or - [x] item
+        const checklistMatch = trimmedLine.match(/^-\s+\[([ x])\]\s+(.*)$/);
+        if (checklistMatch && activeListKey) {
+          collectingDescription = false;
+          const targetList = currentTask[activeListKey];
+          if (targetList) {
+            targetList.push({
+              text: checklistMatch[2].trim(),
+              completed: checklistMatch[1] === 'x'
+            });
+          }
+          continue;
+        }
+
+        // === OLD FORMAT: Task properties (  - key: value) ===
         const parsedKey = this.parseTaskProperty(line, currentTask);
         if (parsedKey !== false) {
-          // Track which checklist we're currently in
+          collectingDescription = false;
           if (parsedKey === 'steps' || parsedKey === 'ac' || parsedKey === 'verify') {
             activeListKey = parsedKey;
           } else {
@@ -171,21 +224,12 @@ export class MarkdownKanbanParser {
           continue;
         }
 
-        // 解析 checklist 中的具体步骤项 (steps, ac, verify)
-        if (this.parseChecklistItem(line, currentTask, activeListKey)) {
+        // === OLD FORMAT: 6-space indented checklist items ===
+        if (this.parseOldChecklistItem(line, currentTask, activeListKey)) {
           continue;
         }
 
-        // Legacy: support ```md code blocks for backward compatibility
-        if (line.match(/^\s+```md/)) {
-          inTaskProperties = false;
-          inTaskDescription = true;
-          inCodeBlock = true;
-          activeListKey = null;
-          continue;
-        }
-
-        // Recognize image markdown syntax as inline description (no wrapper needed)
+        // Image markdown syntax as inline description
         const imageMatch = trimmedLine.match(/^!\[.*\]\(.*\)/);
         if (imageMatch) {
           currentTask.description = currentTask.description
@@ -194,42 +238,44 @@ export class MarkdownKanbanParser {
           continue;
         }
 
-        // Continuation lines for desc: (indented lines that aren't properties/steps)
+        // === NEW FORMAT: Description paragraph ===
+        // Collect plain text lines as description (between metadata blockquote and first bold section)
+        if (collectingDescription && !activeListKey) {
+          currentTask.description = currentTask.description
+            ? currentTask.description + '\n' + trimmedLine
+            : trimmedLine;
+          continue;
+        }
+
+        // OLD FORMAT: Continuation lines for desc: (indented lines)
         if (currentTask.description !== undefined && line.match(/^\s{4,}/) && trimmedLine !== '') {
           currentTask.description = currentTask.description
             ? currentTask.description + '\n' + trimmedLine
             : trimmedLine;
           continue;
         }
-      }
 
-      // 处理空行
-      if (trimmedLine === '') {
-        continue;
-      }
-
-      // 结束当前任务
-      if (!inCodeBlock && currentTask && (inTaskProperties || inTaskDescription)) {
+        // Unrecognized line inside task body — finalize task and re-process line
         this.finalizeCurrentTask(currentTask, currentColumn);
         currentTask = null;
-        inTaskProperties = false;
-        inTaskDescription = false;
+        inTaskBody = false;
         activeListKey = null;
+        collectingDescription = false;
         i--;
       }
     }
 
-    // 添加最后的任务和列
+    // Add last task and column
     this.finalizeCurrentTask(currentTask, currentColumn);
     if (currentColumn) {
       board.columns.push(currentColumn);
     }
 
-    // Auto-assign TSK-N IDs to tasks that don't have one yet (uses counter, no scanning)
+    // Auto-assign TSK_N IDs to tasks that don't have one yet (uses counter, no scanning)
     for (const column of board.columns) {
       for (const task of column.tasks) {
-        if (!task.id.match(/^TSK-\d+$/)) {
-          task.id = `TSK-${board.nextId}`;
+        if (!task.id.match(/^TSK[_-]\d+$/)) {
+          task.id = `TSK_${board.nextId}`;
           board.nextId++;
         }
       }
@@ -239,10 +285,20 @@ export class MarkdownKanbanParser {
   }
 
   private static isTaskTitle(line: string, trimmedLine: string): boolean {
-    // 排除属性行和步骤项
+    // Exclude old-format property lines and step items
     if (line.startsWith('- ') &&
         (trimmedLine.match(/^\s*- (id|due|tags|priority|workload|steps|defaultExpanded|desc|ac|verify|files):/) ||
          line.match(/^\s{6,}- \[([ x])\]/))) {
+      return false;
+    }
+
+    // Exclude new-format checklist items at root level
+    if (trimmedLine.match(/^-\s+\[([ x])\]\s+/)) {
+      return false;
+    }
+
+    // Exclude bold section headers
+    if (trimmedLine.match(/^\*\*(AC|Verify|Steps|Files):\*\*/i)) {
       return false;
     }
 
@@ -298,7 +354,6 @@ export class MarkdownKanbanParser {
         task.files = value;
         break;
       case 'desc':
-        // Inline text after `- desc:` starts the description
         if (value) {
           task.description = task.description
             ? task.description + '\n' + value
@@ -309,7 +364,7 @@ export class MarkdownKanbanParser {
     return propertyName;
   }
 
-  private static parseChecklistItem(line: string, task: KanbanTask, listKey: ChecklistKey | null): boolean {
+  private static parseOldChecklistItem(line: string, task: KanbanTask, listKey: ChecklistKey | null): boolean {
     if (!listKey) return false;
 
     const targetList = task[listKey];
@@ -350,77 +405,77 @@ export class MarkdownKanbanParser {
       markdown += `## ${columnTitle}\n\n`;
 
       for (const task of column.tasks) {
+        // New format: TSK_N in title
+        const idPrefix = task.id && task.id.match(/^TSK[_-]\d+$/) ? `${task.id} ` : '';
+
         if (taskHeaderFormat === 'title') {
-          markdown += `### ${task.title}\n\n`;
+          markdown += `### ${idPrefix}${task.title}\n`;
         } else {
-          markdown += `- ${task.title}\n`;
+          markdown += `- ${idPrefix}${task.title}\n`;
         }
 
-        // 添加任务属性
-        markdown += this.generateTaskProperties(task);
+        // Blockquote metadata line: > tags | priority
+        const metaParts: string[] = [];
+        if (task.tags && task.tags.length > 0) {
+          metaParts.push(task.tags.join(', '));
+        }
+        if (task.priority) {
+          metaParts.push(task.priority);
+        }
+        if (metaParts.length > 0) {
+          markdown += `> ${metaParts.join(' | ')}\n`;
+        }
 
-        // 添加描述
+        // Description paragraph
         if (task.description && task.description.trim() !== '') {
-          const descriptionLines = task.description.trim().split('\n');
-          if (descriptionLines.length === 1) {
-            markdown += `  - desc: ${descriptionLines[0]}\n`;
-          } else {
-            markdown += `  - desc:\n`;
-            for (const descLine of descriptionLines) {
-              markdown += `    ${descLine}\n`;
-            }
+          markdown += `\n${task.description.trim()}\n`;
+        }
+
+        // Due date (preserved for backward compat — rare field)
+        if (task.dueDate) {
+          markdown += `\n**Due:** ${task.dueDate}\n`;
+        }
+
+        // Workload (preserved for backward compat — rare field)
+        if (task.workload) {
+          markdown += `\n**Workload:** ${task.workload}\n`;
+        }
+
+        // Steps checklist
+        if (task.steps && task.steps.length > 0) {
+          markdown += `\n**Steps:**\n`;
+          for (const item of task.steps) {
+            const checkbox = item.completed ? '[x]' : '[ ]';
+            markdown += `- ${checkbox} ${item.text}\n`;
           }
+        }
+
+        // AC checklist
+        if (task.ac && task.ac.length > 0) {
+          markdown += `\n**AC:**\n`;
+          for (const item of task.ac) {
+            const checkbox = item.completed ? '[x]' : '[ ]';
+            markdown += `- ${checkbox} ${item.text}\n`;
+          }
+        }
+
+        // Verify checklist
+        if (task.verify && task.verify.length > 0) {
+          markdown += `\n**Verify:**\n`;
+          for (const item of task.verify) {
+            const checkbox = item.completed ? '[x]' : '[ ]';
+            markdown += `- ${checkbox} ${item.text}\n`;
+          }
+        }
+
+        // Files inline
+        if (task.files) {
+          markdown += `\n**Files:** ${task.files}\n`;
         }
 
         markdown += '\n';
       }
     }
     return markdown;
-  }
-
-  private static generateTaskProperties(task: KanbanTask): string {
-    let properties = '';
-
-    if (task.id && task.id.match(/^TSK-\d+$/)) {
-      properties += `  - id: ${task.id}\n`;
-    }
-    if (task.dueDate) {
-      properties += `  - due: ${task.dueDate}\n`;
-    }
-    if (task.tags && task.tags.length > 0) {
-      properties += `  - tags: [${task.tags.join(', ')}]\n`;
-    }
-    if (task.priority) {
-      properties += `  - priority: ${task.priority}\n`;
-    }
-    if (task.workload) {
-      properties += `  - workload: ${task.workload}\n`;
-    }
-    if (task.defaultExpanded) {
-      properties += `  - defaultExpanded: true\n`;
-    }
-    if (task.steps && task.steps.length > 0) {
-      properties += this.generateChecklistProperty('steps', task.steps);
-    }
-    if (task.ac && task.ac.length > 0) {
-      properties += this.generateChecklistProperty('ac', task.ac);
-    }
-    if (task.verify && task.verify.length > 0) {
-      properties += this.generateChecklistProperty('verify', task.verify);
-    }
-    if (task.files) {
-      properties += `  - files: ${task.files}\n`;
-    }
-
-    return properties;
-  }
-
-  private static generateChecklistProperty(key: string, items: Array<{ text: string; completed: boolean }>): string {
-    let output = `  - ${key}:\n`;
-    for (const item of items) {
-      const checkbox = item.completed ? '[x]' : '[ ]';
-      output += `      - ${checkbox} ${item.text}\n`;
-    }
-    return output;
   }
 }

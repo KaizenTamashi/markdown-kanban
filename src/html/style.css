@@ -606,10 +606,7 @@ body.filters-visible {
 }
 
 .copy-tooltip {
-    position: absolute;
-    bottom: calc(100% + 4px);
-    left: 50%;
-    transform: translateX(-50%);
+    position: fixed;
     background-color: #1a7f37;
     color: #fff;
     font-size: 10px;
@@ -619,7 +616,7 @@ body.filters-visible {
     white-space: nowrap;
     pointer-events: none;
     animation: tooltipFadeIn 0.15s ease-out;
-    z-index: 100;
+    z-index: 9999;
 }
 
 @keyframes tooltipFadeIn {
