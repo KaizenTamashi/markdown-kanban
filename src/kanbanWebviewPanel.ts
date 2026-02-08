@@ -17,6 +17,10 @@ export class KanbanWebviewPanel {
     private _htmlInitialized = false;
     private _lastSelfSaveTime = 0;
 
+    public get documentUri(): vscode.Uri | undefined {
+        return this._document?.uri;
+    }
+
     public static createOrShow(extensionUri: vscode.Uri, context: vscode.ExtensionContext, document?: vscode.TextDocument) {
         const column = vscode.window.activeTextEditor?.viewColumn;
 
@@ -80,15 +84,9 @@ export class KanbanWebviewPanel {
     private _setupEventListeners() {
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
-        this._panel.onDidChangeViewState(
-            e => {
-                if (e.webviewPanel.visible) {
-                    this._update();
-                }
-            },
-            null,
-            this._disposables
-        );
+        // retainContextWhenHidden preserves the webview DOM on tab switch.
+        // File changes are handled by onDidChangeTextDocument in extension.ts.
+        // No onDidChangeViewState handler needed — avoids redundant re-renders.
 
         this._panel.webview.onDidReceiveMessage(
             message => this._handleMessage(message),

@@ -72,12 +72,12 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// 监听文档变化，自动更新看板（实时同步）
+	// Only reload when the changed document matches the kanban's pinned file.
 	const documentChangeListener = vscode.workspace.onDidChangeTextDocument((event) => {
 		if (event.document.languageId === 'markdown' && fileListenerEnabled) {
-			// 延迟更新，避免频繁刷新
 			setTimeout(() => {
-				// 更新面板中的看板
-				if (KanbanWebviewPanel.currentPanel) {
+				if (KanbanWebviewPanel.currentPanel &&
+					KanbanWebviewPanel.currentPanel.documentUri?.toString() === event.document.uri.toString()) {
 					KanbanWebviewPanel.currentPanel.loadMarkdownFile(event.document);
 				}
 			}, 500);
@@ -85,13 +85,11 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// 监听活动编辑器变化
+	// Only set context flag — don't auto-load other markdown files into the kanban.
+	// The kanban stays pinned to the file originally opened via the command.
 	const activeEditorChangeListener = vscode.window.onDidChangeActiveTextEditor((editor) => {
 		if (editor && editor.document.languageId === 'markdown' && fileListenerEnabled) {
 			vscode.commands.executeCommand('setContext', 'markdownKanbanActive', true);
-			// 如果有面板打开，自动加载当前文档
-			if (KanbanWebviewPanel.currentPanel) {
-				KanbanWebviewPanel.currentPanel.loadMarkdownFile(editor.document);
-			}
 		} else {
 			vscode.commands.executeCommand('setContext', 'markdownKanbanActive', false);
 		}
